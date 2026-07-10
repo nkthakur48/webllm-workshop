@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pre-Download: Gemma Model</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f5f5f5; padding: 2rem; }
+    .card { background: white; border-radius: 12px; padding: 2.5rem; max-width: 520px; width: 100%; box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: center; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    p { color: #555; margin-bottom: 1.5rem; line-height: 1.5; }
+    #status { font-size: 0.95rem; color: #333; min-height: 1.4em; margin-bottom: 1rem; }
+    .progress-bar { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-bottom: 1rem; }
+    .progress-fill { height: 100%; width: 0%; background: #4285f4; border-radius: 4px; transition: width 0.3s; }
+    .done { color: #0d9488; font-weight: 600; }
+    .error { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Workshop Pre-Download</h1>
+    <p>This page downloads and caches the Gemma AI model (~1.5 GB) so you're ready for Day 1. Leave it open until it finishes.</p>
+    <p style="font-size:0.85rem; color:#888;"><strong>Important:</strong> Open this page via Live Server or <code>npx serve</code> — not by double-clicking the file. The model cache is tied to the URL origin (<code>localhost</code>), so it must match how you'll run the workshop code.</p>
+    <div id="status">Starting download...</div>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <p id="result"></p>
+  </div>
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+    const statusEl = document.getElementById("status");
+    const progressEl = document.getElementById("progress");
+    const resultEl = document.getElementById("result");
+
+    try {
+      const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+        initProgressCallback: ({ text, progress }) => {
+          statusEl.textContent = text;
+          if (progress !== undefined) {
+            progressEl.style.width = (progress * 100) + "%";
+          }
+        }
+      });
+      statusEl.className = "done";
+      statusEl.textContent = "Model cached! You're all set for the workshop.";
+      progressEl.style.width = "100%";
+      progressEl.style.background = "#0d9488";
+      resultEl.textContent = "You can close this tab. The model will load instantly on Day 1.";
+    } catch (e) {
+      statusEl.className = "error";
+      statusEl.textContent = "Download failed: " + e.message;
+      resultEl.textContent = "Try using Chrome or Edge. Check chrome://gpu for WebGPU support.";
+    }
+  </script>
+</body>
+</html>
