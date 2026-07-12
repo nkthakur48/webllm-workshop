@@ -1,78 +1,67 @@
-# Pre-Workshop Setup Guide
 
-## What you'll need for the workshop
+# Build Your Own Browser AI Agent
 
-1. A laptop with **Google Chrome** installed (latest version)
-2. A code editor — we recommend **VS Code** (https://code.visualstudio.com)
-3. The AI model pre-downloaded (instructions below)
+> 2 hours &nbsp;·&nbsp; Zero cost &nbsp;·&nbsp; 100% in your browser
 
----
+No cloud servers, no API keys, no cloud bills. In one sitting you go from a blank HTML file to a working AI chat agent with a persona, memory, a polished UI, and tool-calling — all running locally on your machine.
 
-## Step 1: Install VS Code + Live Server
-
-1. Download VS Code from https://code.visualstudio.com
-2. Open VS Code
-3. Go to Extensions (click the square icon on the left sidebar, or press `Ctrl+Shift+X` / `Cmd+Shift+X`)
-4. Search for **"Live Server"** by Ritwick Dey
-5. Click **Install**
-
-That's it. We'll use this to run your code in the browser during the workshop.
+📽️ **Slides are in this repo:** [`slides.pdf`](slides.pdf) &nbsp;·&nbsp; live/interactive version: [`slides.html`](slides.html)
 
 ---
 
-## Step 2: Check your browser supports WebGPU
+## The Stack
 
-1. Open **Google Chrome**
-2. Type `chrome://gpu` in the address bar and press Enter
-3. Look for the line: **WebGPU: Hardware accelerated**
-4. If you see it — you're good. If not — update Chrome to the latest version and try again.
+| | |
+|---|---|
+| 🧠 **Gemma 2 2B** | Google's open model, quantized to ~1.5 GB |
+| ⚡ **WebLLM** | OpenAI-compatible chat API — same shape as `openai.chat.completions.create`, so the skills transfer directly |
+| 🖥️ **WebGPU** | GPU compute in the browser — runs inference without a server |
 
-> **Don't have WebGPU?** Try Microsoft Edge (also works). If neither works, don't worry — we'll help you at the workshop.
-
----
-
-## Step 3: Download the workshop files
-
-1. Download the workshop files from https://github.com/nkthakur48/webllm-workshop (click **Code → Download ZIP**)
-2. Unzip it somewhere easy to find (e.g., your Desktop or Documents)
-3. Open the folder in VS Code: **File → Open Folder → select the unzipped folder**
-
-You should see a file called `precache.html` in the sidebar.
+One CDN import (`@mlc-ai/web-llm`), no npm install, no build step.
 
 ---
 
-## Step 4: Pre-download the AI model (~1.5 GB)
+## Workshop agenda
 
-This downloads the Gemma AI model into your browser's cache so the workshop starts fast. **Do this on good wifi — it's a one-time 1.5 GB download.**
-
-> **Why this matters:** The browser caches the model per website address (origin). If you download the model by double-clicking `precache.html` (which opens as `file://`), the cache won't carry over to `localhost://` when we run code during the workshop. That's why we use Live Server for this step too.
-
-1. Open the workshop folder in VS Code (from Step 3)
-2. Right-click `precache.html` in the sidebar → **Open with Live Server**
-3. Chrome will open automatically — you'll see a progress bar
-4. **Leave the tab open until it says "Model cached!"** (2–10 minutes depending on your wifi)
-5. Once done, you'll see: **"You can close this tab. The model will load instantly at the workshop."**
-
-### Troubleshooting
-
-| Problem | Fix |
-|---------|-----|
-| Page shows "Download failed" | Make sure you're using Chrome or Edge. Check that `chrome://gpu` shows WebGPU support. |
-| Download is stuck or very slow | Try a faster wifi network, or tether to your phone's data. |
-| Tab crashes | Your laptop may not have enough GPU memory. Let us know at the workshop — we have a lighter model as backup. |
-| "Open with Live Server" not showing | Make sure you installed the Live Server extension (Step 1 above). Alternatively, open a terminal in the folder and run `npx serve` then visit the URL it prints. |
-
-### Important
-
-- Do **not** clear your browser cache between now and the workshop.
-- At the workshop, always open files using Live Server (same as above) — never by double-clicking the HTML file directly.
+| Phase | Focus |
+|---|---|
+| ⚡ **Phase 1 — The AI Loop** | Load the model, first chat completion, streaming responses, personas, multi-turn memory |
+| 🎨 **Phase 2 — Make It Real** | Wrap the loop in a proper chat UI — bubbles, scrolling, input bar |
+| 🚀 **Phase 3 — Make It Yours** | Customize your agent's persona and prompts, then a live demo of an agentic **Research Agent** that calls tools (Wikipedia, weather, calculator) and reasons over the results |
+| 🏁 **Phase 4 — Ship It** | Submit your agent for the hackathon qualifier |
 
 ---
 
-## What to expect
+## What's in this repo
 
-In this single 2-hour session, you'll build a working AI chat from scratch — load the model, send messages, get streaming responses, give your AI a personality — then wrap it in a polished chat UI, customize your AI agent, and submit it for the hackathon.
+**Getting started**
+- [`slides.html`](slides.html) / [`slides.pdf`](slides.pdf) — the workshop deck
+- [`precache.html`](precache.html) — pre-download the AI model before the session
 
-No prior AI or machine learning experience needed. Just bring your laptop and curiosity.
+**Workshop files** (built up phase by phase)
+- [`basic.html`](basic.html) — minimal hello-world, non-streaming — start here
+- [`checkpoint.html`](checkpoint.html) — Phase 1 catch-up point (streaming + multi-turn + persona)
+- [`chat.html`](chat.html) — the finished, polished chat UI
+- [`research-agent.html`](research-agent.html) — the agentic, tool-calling demo
 
-See you there! 🚀
+**Bonus examples** — same tool-calling pattern, different builds: `adventure/`, `quiz-tutor/`, `budget/`, `flashcards/`, `escape-room/`, `npc-civilization/`, `health-attendance/`
+
+Open [`index.html`](index.html) for a linked gallery of all of the above.
+
+## Getting started
+
+New here? Start with the [pre-workshop setup guide](pre-workshop-guide.md) to install VS Code + Live Server and pre-cache the model.
+
+---
+
+## Resources
+
+| | |
+|---|---|
+| WebLLM docs | github.com/mlc-ai/web-llm |
+| MLC model zoo | huggingface.co/mlc-ai |
+| Gemma on HF | huggingface.co/google/gemma-2-2b-it |
+| Workshop repo | app.hidevs.xyz/learning-hub/webinar/zero-cost-ai-agent-browser-lab |
+
+**Go deeper:** Web Workers (off main thread) · structured JSON output · bigger models (Gemma 9B, 27B) · native function calling
+
