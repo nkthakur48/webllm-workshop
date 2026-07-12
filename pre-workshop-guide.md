@@ -33,9 +33,9 @@ That's it. We'll use this to run your code in the browser during the workshop.
 
 ## Step 3: Download the workshop files
 
-1. Download the workshop project folder (your instructor will share the link)
+1. Download the workshop files from https://github.com/nkthakur48/webllm-workshop (click **Code → Download ZIP**)
 2. Unzip it somewhere easy to find (e.g., your Desktop or Documents)
-3. Open the folder in VS Code: **File → Open Folder → select the workshop folder**
+3. Open the folder in VS Code: **File → Open Folder → select the unzipped folder**
 
 You should see a file called `precache.html` in the sidebar.
 
