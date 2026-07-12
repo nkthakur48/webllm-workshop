@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Choose Your Adventure</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .choices {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      padding: 0 1rem 0.5rem;
+    }
+    .choice-btn {
+      background: #e8f0fe;
+      color: #1a73e8;
+      border: 1px solid #c5d7f2;
+      border-radius: 8px;
+      padding: 0.5rem 0.8rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .choice-btn:hover { background: #d2e3fc; }
+    .choice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .turn-count {
+      background: #1a73e8;
+      color: white;
+      text-align: center;
+      padding: 0.4rem;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <h2>Loading Adventure Engine...</h2>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div id="loading-status">Initializing...</div>
+  </div>
+
+  <div id="app">
+    <div class="header">
+      <h1>Choose Your Adventure</h1>
+      <button id="clear-btn">New Story</button>
+    </div>
+    <div class="turn-count" id="turn-count">Turn 0</div>
+    <div id="chat-messages"></div>
+    <div class="choices" id="choices"></div>
+    <div class="input-bar">
+      <input type="text" id="input" placeholder="Or type your own action..." />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+    const SYSTEM_PROMPT = `You are an interactive fiction narrator running a choose-your-own-adventure game.
+
+Rules:
+- Describe scenes vividly in 2-3 sentences.
+- At the end of every response, offer exactly 2 or 3 choices for the player.
+- Format choices EXACTLY like this (on their own lines at the end):
+  [CHOICE_1] Description of first choice
+  [CHOICE_2] Description of second choice
+  [CHOICE_3] Description of third choice (optional)
+- When the player makes a choice, continue the story based on it.
+- Include danger, mystery, and surprise. Track consequences.
+- If the player dies or wins, say so clearly and offer to start a new adventure.`;
+
+    const WELCOME = "Welcome, adventurer! Tell me a setting — haunted castle, space station, pirate ship, enchanted forest — and your story begins.";
+
+    const loadingEl = document.getElementById("loading");
+    const appEl = document.getElementById("app");
+    const progressEl = document.getElementById("progress");
+    const loadingStatus = document.getElementById("loading-status");
+    const chatMessages = document.getElementById("chat-messages");
+    const choicesEl = document.getElementById("choices");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const clearBtn = document.getElementById("clear-btn");
+    const turnCountEl = document.getElementById("turn-count");
+
+    const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+      initProgressCallback: ({ text, progress }) => {
+        loadingStatus.textContent = text;
+        if (progress !== undefined) progressEl.style.width = (progress * 100) + "%";
+      }
+    });
+
+    loadingEl.style.display = "none";
+    appEl.style.display = "flex";
+
+    let chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+    let generating = false;
+    let turns = 0;
+
+    function addMessage(type, text) {
+      const div = document.createElement("div");
+      div.className = "message " + type;
+      div.textContent = text;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function setInputEnabled(enabled) {
+      sendBtn.disabled = !enabled;
+      inputEl.disabled = !enabled;
+      generating = !enabled;
+    }
+
+    function onReply(text, el) {
+      const choiceRegex = /\[CHOICE_\d\]\s*(.+)/g;
+      const choices = [];
+      let match;
+      while ((match = choiceRegex.exec(text)) !== null) {
+        choices.push(match[1].trim());
+      }
+
+      // Strip markers from displayed text
+      const clean = text.replace(/\[CHOICE_\d\]\s*(.+)/g, "").trim();
+      el.textContent = clean;
+
+      // Render choice buttons
+      choicesEl.innerHTML = "";
+      choices.forEach((choice, i) => {
+        const btn = document.createElement("button");
+        btn.className = "choice-btn";
+        btn.textContent = `${i + 1}. ${choice}`;
+        btn.addEventListener("click", () => {
+          choicesEl.innerHTML = "";
+          sendMessage(choice);
+        });
+        choicesEl.appendChild(btn);
+      });
+
+      turns++;
+      turnCountEl.textContent = `Turn ${turns}`;
+    }
+
+    async function sendMessage(userText) {
+      chatHistory.push({ role: "user", content: userText });
+      addMessage("user", userText);
+      choicesEl.innerHTML = "";
+      setInputEnabled(false);
+      const thinkingEl = addMessage("thinking", "The story unfolds...");
+
+      const chunks = await engine.chat.completions.create({
+        messages: chatHistory,
+        stream: true,
+      });
+
+      thinkingEl.remove();
+      const assistantEl = addMessage("assistant", "");
+
+      let reply = "";
+      for await (const chunk of chunks) {
+        reply += chunk.choices[0]?.delta.content || "";
+        assistantEl.textContent = reply;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      chatHistory.push({ role: "assistant", content: reply });
+      onReply(reply, assistantEl);
+      setInputEnabled(true);
+      inputEl.focus();
+    }
+
+    addMessage("welcome", WELCOME);
+    inputEl.focus();
+
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      if (text && !generating) { inputEl.value = ""; sendMessage(text); }
+    });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !generating) sendBtn.click();
+    });
+    clearBtn.addEventListener("click", () => {
+      chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+      chatMessages.innerHTML = "";
+      choicesEl.innerHTML = "";
+      turns = 0;
+      turnCountEl.textContent = "Turn 0";
+      addMessage("welcome", WELCOME);
+      inputEl.focus();
+    });
+  </script>
+</body>
+</html>

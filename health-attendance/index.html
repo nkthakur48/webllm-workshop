@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rural Health Attendance Coach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #334155;
+      --blue: #3b82f6; --purple: #8b5cf6; --teal: #14b8a6;
+      --green: #22c55e; --yellow: #eab308; --red: #ef4444;
+      --text: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
+    }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      height: 100vh; overflow: hidden;
+    }
+
+    /* --- Loading --- */
+    #loading {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100vh; gap: 1.2rem;
+      background: radial-gradient(ellipse at 30% 40%, rgba(59,130,246,0.08) 0%, transparent 60%),
+                  radial-gradient(ellipse at 70% 60%, rgba(139,92,246,0.08) 0%, transparent 60%);
+    }
+    .loading-icon { font-size: 3rem; animation: float 3s ease-in-out infinite; }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    #loading h2 {
+      font-size: 1.6rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--blue), var(--purple), var(--teal));
+      background-size: 200% 200%; animation: gradient 3s ease infinite;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    @keyframes gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    #loading-status { color: var(--muted); font-size: 0.85rem; }
+    .progress-bar {
+      width: 320px; height: 6px; background: var(--surface2);
+      border-radius: 3px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--blue), var(--purple), var(--teal));
+      background-size: 200% 100%; animation: gradient 2s ease infinite;
+      border-radius: 3px; transition: width 0.3s;
+    }
+
+    /* --- App layout --- */
+    #app {
+      display: none; height: 100vh;
+      grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr;
+    }
+
+    /* --- Header --- */
+    .header {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(139,92,246,0.1), rgba(20,184,166,0.08));
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 0.7rem 1.2rem; display: flex; align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(20px);
+    }
+    .header-left { display: flex; align-items: center; gap: 0.8rem; }
+    .header-icon {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; box-shadow: 0 4px 15px rgba(59,130,246,0.3);
+    }
+    .header h1 {
+      font-size: 1.05rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--text), #fff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .header .subtitle { font-size: 0.7rem; color: var(--muted); }
+    .header-badges { display: flex; gap: 0.4rem; align-items: center; }
+    .hdr-badge {
+      font-size: 0.6rem; padding: 0.2rem 0.5rem; border-radius: 20px;
+      font-weight: 600; letter-spacing: 0.02em;
+    }
+    .hdr-badge.offline { background: rgba(20,184,166,0.15); color: var(--teal); border: 1px solid rgba(20,184,166,0.3); }
+    .hdr-badge.ai { background: rgba(139,92,246,0.15); color: var(--purple); border: 1px solid rgba(139,92,246,0.3); }
+    .btn-ghost {
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text); padding: 0.35rem 0.8rem; border-radius: 8px;
+      font-size: 0.75rem; cursor: pointer; font-family: inherit; font-weight: 500;
+      transition: all 0.2s;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
+
+    /* --- Chat panel --- */
+    .chat-panel { display: flex; flex-direction: column; overflow: hidden; }
+    .tool-bar {
+      padding: 0.35rem 1rem; font-size: 0.68rem; color: var(--dim);
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .tool-bar .tools { opacity: 0.7; }
+    .tool-bar .action-count {
+      background: rgba(139,92,246,0.15); color: var(--purple);
+      padding: 0.15rem 0.5rem; border-radius: 10px; font-weight: 600;
+    }
+    #chat-messages {
+      flex: 1; overflow-y: auto; padding: 1rem; display: flex;
+      flex-direction: column; gap: 0.6rem;
+      scrollbar-width: thin; scrollbar-color: var(--surface2) transparent;
+    }
+    .message {
+      max-width: 85%; padding: 0.65rem 0.95rem; border-radius: 16px;
+      line-height: 1.55; font-size: 0.88rem; word-wrap: break-word;
+      animation: msgIn 0.25s ease-out;
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .message.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      color: white; border-bottom-right-radius: 4px;
+      box-shadow: 0 2px 10px rgba(59,130,246,0.2);
+    }
+    .message.assistant {
+      align-self: flex-start; background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-bottom-left-radius: 4px;
+    }
+    .message.welcome {
+      align-self: center; background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08));
+      border: 1px solid rgba(255,255,255,0.06);
+      color: var(--muted); font-size: 0.85rem; text-align: center;
+      max-width: 90%; padding: 1.2rem; border-radius: 16px;
+    }
+    .message.thinking {
+      align-self: flex-start; background: var(--surface);
+      color: var(--dim); font-style: italic;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .message.thinking::after {
+      content: ''; display: inline-block; width: 3px; height: 14px;
+      background: var(--purple); margin-left: 4px; vertical-align: middle;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    .message.tool-call {
+      align-self: center; background: rgba(234,179,8,0.08);
+      border: 1px solid rgba(234,179,8,0.2);
+      color: var(--yellow); font-size: 0.78rem;
+      max-width: 90%; text-align: center; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+    }
+    .message.tool-call::before { content: '⚙️'; }
+    .message.tool-result {
+      align-self: center; background: rgba(20,184,166,0.06);
+      border: 1px solid rgba(20,184,166,0.15);
+      color: var(--teal); font-size: 0.76rem;
+      max-width: 90%; border-radius: 10px; white-space: pre-wrap;
+      font-family: 'SF Mono', 'Cascadia Code', monospace;
+    }
+    .message.assistant p { margin: 0.3rem 0; }
+    .message.assistant strong { color: #f1f5f9; }
+    .message.assistant ul, .message.assistant ol { margin: 0.3rem 0; padding-left: 1.4rem; }
+    .message.assistant li { margin: 0.15rem 0; }
+    .message.assistant code {
+      background: rgba(255,255,255,0.08); padding: 0.1rem 0.35rem;
+      border-radius: 4px; font-size: 0.88em;
+    }
+
+    /* --- Suggested prompts --- */
+    .suggestions {
+      display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center;
+      margin-top: 0.6rem;
+    }
+    .suggestion {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      color: var(--muted); padding: 0.3rem 0.7rem; border-radius: 20px;
+      font-size: 0.72rem; cursor: pointer; font-family: inherit;
+      transition: all 0.2s;
+    }
+    .suggestion:hover {
+      background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.3);
+      color: var(--text);
+    }
+
+    /* --- Input bar --- */
+    .input-bar {
+      display: flex; gap: 0.5rem; padding: 0.7rem 1rem;
+      background: var(--surface); border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .input-bar input {
+      flex: 1; padding: 0.6rem 1rem; background: var(--bg);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+      color: var(--text); font-size: 0.88rem; outline: none;
+      font-family: inherit; transition: border-color 0.2s;
+    }
+    .input-bar input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .input-bar input::placeholder { color: var(--dim); }
+    .input-bar button {
+      padding: 0.6rem 1.2rem;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      color: white; border: none; border-radius: 12px;
+      font-size: 0.88rem; cursor: pointer; font-family: inherit; font-weight: 600;
+      transition: all 0.2s; box-shadow: 0 2px 10px rgba(59,130,246,0.3);
+    }
+    .input-bar button:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(59,130,246,0.4); }
+    .input-bar button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* --- Dashboard panel --- */
+    .dashboard {
+      background: linear-gradient(180deg, var(--surface) 0%, rgba(30,41,59,0.95) 100%);
+      border-left: 1px solid rgba(255,255,255,0.06);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .dash-header {
+      padding: 0.8rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-weight: 700; font-size: 0.85rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .dash-header .live-badge {
+      display: flex; align-items: center; gap: 0.35rem;
+      background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2);
+      padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem;
+      color: var(--green); font-weight: 600;
+    }
+    .live-dot {
+      width: 6px; height: 6px; background: var(--green); border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+      50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(34,197,94,0); }
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;
+      padding: 0.8rem 1rem;
+    }
+    .stat-card {
+      background: var(--bg); border-radius: 12px; padding: 0.7rem;
+      text-align: center; border: 1px solid rgba(255,255,255,0.06);
+      position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    }
+    .stat-card.total::before { background: linear-gradient(90deg, var(--blue), var(--purple)); }
+    .stat-card.present::before { background: var(--green); }
+    .stat-card.absent::before { background: var(--red); }
+    .stat-value {
+      font-size: 1.5rem; font-weight: 800; line-height: 1;
+    }
+    .stat-value.gradient {
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .stat-value.green { color: var(--green); }
+    .stat-value.red { color: var(--red); }
+    .stat-label {
+      font-size: 0.6rem; color: var(--dim); text-transform: uppercase;
+      letter-spacing: 0.05em; margin-top: 0.25rem;
+    }
+
+    /* Worker table */
+    .dash-table-wrap {
+      flex: 1; overflow-y: auto; padding: 0 0.8rem 0.8rem;
+      scrollbar-width: thin; scrollbar-color: var(--surface2) transparent;
+    }
+    .dash-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
+    .dash-table th {
+      text-align: left; padding: 0.5rem 0.4rem; color: var(--dim);
+      font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em;
+      border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky;
+      top: 0; background: var(--surface); z-index: 1;
+    }
+    .dash-table td {
+      padding: 0.4rem;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      transition: background 0.15s;
+    }
+    .dash-table tr:hover td { background: rgba(255,255,255,0.03); }
+    .worker-name { font-weight: 600; color: var(--text); }
+    .worker-role { color: var(--muted); font-size: 0.7rem; }
+    .status-chip {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      padding: 0.15rem 0.45rem; border-radius: 10px;
+      font-size: 0.65rem; font-weight: 600;
+    }
+    .status-chip.present { background: rgba(34,197,94,0.12); color: var(--green); }
+    .status-chip.absent { background: rgba(239,68,68,0.12); color: var(--red); }
+    .status-chip.late { background: rgba(234,179,8,0.12); color: var(--yellow); }
+    .status-chip.none { color: var(--dim); font-weight: 400; }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%; display: inline-block;
+    }
+    .status-dot.present { background: var(--green); }
+    .status-dot.absent { background: var(--red); }
+    .status-dot.late { background: var(--yellow); }
+    .rate-bar {
+      width: 50px; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px;
+      display: inline-block; vertical-align: middle; margin-right: 0.35rem;
+      overflow: hidden;
+    }
+    .rate-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease-out; }
+    .rate-high { background: var(--green); }
+    .rate-mid { background: var(--yellow); }
+    .rate-low { background: var(--red); }
+    .rate-text { font-weight: 600; font-size: 0.7rem; }
+
+    /* Alert banner */
+    .alert-banner {
+      margin: 0 0.8rem 0.6rem; padding: 0.55rem 0.75rem; border-radius: 10px;
+      font-size: 0.72rem; display: flex; align-items: center; gap: 0.4rem;
+      background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15);
+      color: #fca5a5; cursor: pointer; transition: all 0.2s;
+    }
+    .alert-banner:hover { background: rgba(239,68,68,0.12); }
+
+    /* Update flash */
+    @keyframes flash {
+      0% { background: rgba(59,130,246,0.15); }
+      100% { background: transparent; }
+    }
+    .flash td { animation: flash 1s ease-out; }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <div class="loading-icon">🏥</div>
+    <h2>Rural Health Attendance Coach</h2>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div id="loading-status">Initializing AI model...</div>
+  </div>
+
+  <div id="app">
+    <div class="header">
+      <div class="header-left">
+        <div class="header-icon">🏥</div>
+        <div>
+          <h1>Rural Health Attendance Coach</h1>
+          <div class="subtitle">AI-powered health worker tracking · 100% offline</div>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="hdr-badge offline">✦ Offline-Ready</span>
+        <span class="hdr-badge ai">Gemma 2B</span>
+        <button class="btn-ghost" id="clear-btn">↻ New Session</button>
+      </div>
+    </div>
+
+    <div class="chat-panel">
+      <div class="tool-bar">
+        <span class="tools">Tools: log_attendance · check_attendance · flag_absentees · get_schedule</span>
+        <span class="action-count" id="tool-count">0 actions</span>
+      </div>
+      <div id="chat-messages"></div>
+      <div class="input-bar">
+        <input type="text" id="input" placeholder="Ask about attendance, log a visit, or flag absentees..." />
+        <button id="send">Send ↗</button>
+      </div>
+    </div>
+
+    <div class="dashboard">
+      <div class="dash-header">
+        <span style="display:flex;align-items:center;gap:0.5rem;">📊 Attendance Dashboard</span>
+        <div class="live-badge"><span class="live-dot"></span> Live</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card total">
+          <div class="stat-value gradient" id="stat-total">12</div>
+          <div class="stat-label">Workers</div>
+        </div>
+        <div class="stat-card present">
+          <div class="stat-value green" id="stat-present">0</div>
+          <div class="stat-label">Present</div>
+        </div>
+        <div class="stat-card absent">
+          <div class="stat-value red" id="stat-absent">0</div>
+          <div class="stat-label">Absent</div>
+        </div>
+      </div>
+      <div id="alert-area"></div>
+      <div style="padding:0 0.8rem 0.4rem; font-size:0.65rem; color:var(--dim);" id="dash-date"></div>
+      <div class="dash-table-wrap">
+        <table class="dash-table">
+          <thead>
+            <tr><th>Worker</th><th>Role</th><th>Today</th><th>30-Day Rate</th></tr>
+          </thead>
+          <tbody id="worker-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+    // --- Seed data ---
+    const WORKERS = [
+      { id: 1, name: "Priya Sharma", role: "ANM", district: "Dharwad" },
+      { id: 2, name: "Ravi Kumar", role: "ASHA", district: "Dharwad" },
+      { id: 3, name: "Sunita Devi", role: "ANM", district: "Hubli" },
+      { id: 4, name: "Anil Patil", role: "Pharmacist", district: "Dharwad" },
+      { id: 5, name: "Meena Bai", role: "ASHA", district: "Hubli" },
+      { id: 6, name: "Rajesh Gowda", role: "Lab Tech", district: "Gadag" },
+      { id: 7, name: "Kavitha R", role: "ASHA", district: "Gadag" },
+      { id: 8, name: "Deepak Naik", role: "ANM", district: "Dharwad" },
+      { id: 9, name: "Lakshmi S", role: "ASHA", district: "Hubli" },
+      { id: 10, name: "Venkat Rao", role: "Pharmacist", district: "Gadag" },
+      { id: 11, name: "Anjali M", role: "ASHA", district: "Dharwad" },
+      { id: 12, name: "Suresh B", role: "Lab Tech", district: "Hubli" },
+    ];
+
+    const TODAY = new Date();
+    const todayStr = TODAY.toISOString().slice(0, 10);
+    const attendance = {};
+
+    // ponytail: generate 30-day history with per-worker reliability bias
+    WORKERS.forEach(w => {
+      attendance[w.id] = [];
+      const reliability = 0.6 + Math.random() * 0.4;
+      for (let d = 29; d >= 1; d--) {
+        const date = new Date(TODAY);
+        date.setDate(date.getDate() - d);
+        if (date.getDay() === 0) continue;
+        const rand = Math.random();
+        let status;
+        if (rand < reliability * 0.85) status = "present";
+        else if (rand < reliability) status = "late";
+        else status = "absent";
+        attendance[w.id].push({ date: date.toISOString().slice(0, 10), status });
+      }
+    });
+
+    function getTodayStatus(id) {
+      const rec = attendance[id].find(r => r.date === todayStr);
+      return rec ? rec.status : null;
+    }
+
+    function get30DayRate(id) {
+      const recs = attendance[id];
+      if (!recs.length) return 0;
+      const ok = recs.filter(r => r.status === "present" || r.status === "late").length;
+      return Math.round((ok / recs.length) * 100);
+    }
+
+    // --- Tools ---
+    function logAttendance(name, status) {
+      const w = WORKERS.find(x => x.name.toLowerCase().includes(name.toLowerCase()));
+      if (!w) return { text: `Worker "${name}" not found. Available: ${WORKERS.map(x => x.name).join(", ")}` };
+      const existing = attendance[w.id].find(r => r.date === todayStr);
+      if (existing) existing.status = status;
+      else attendance[w.id].push({ date: todayStr, status });
+      refreshDashboard(w.id);
+      return { text: `Logged ${w.name} as ${status.toUpperCase()} for ${todayStr}. 30-day rate: ${get30DayRate(w.id)}%` };
+    }
+
+    function checkAttendance(name) {
+      const w = WORKERS.find(x => x.name.toLowerCase().includes(name.toLowerCase()));
+      if (!w) return { text: `Worker "${name}" not found.` };
+      const ts = getTodayStatus(w.id) || "not logged";
+      const last5 = attendance[w.id].slice(-5).map(r => `${r.date}: ${r.status}`).join("\n");
+      return { text: `${w.name} (${w.role}, ${w.district})\nToday: ${ts}\n30-day: ${get30DayRate(w.id)}%\n\nRecent:\n${last5}` };
+    }
+
+    function flagAbsentees() {
+      const flagged = WORKERS.filter(w => get30DayRate(w.id) < 75);
+      if (!flagged.length) return { text: "No workers below 75% threshold." };
+      return { text: `Below 75%:\n${flagged.map(w => `⚠ ${w.name} (${w.role}, ${w.district}) — ${get30DayRate(w.id)}%`).join("\n")}` };
+    }
+
+    function getSchedule(district) {
+      const list = district
+        ? WORKERS.filter(w => w.district.toLowerCase().includes(district.toLowerCase()))
+        : WORKERS;
+      if (!list.length) return { text: `No workers in "${district}".` };
+      return { text: `${district || "All"} (${todayStr}):\n${list.map(w => `${w.name} | ${w.role} | Today: ${getTodayStatus(w.id) || "—"} | 30d: ${get30DayRate(w.id)}%`).join("\n")}` };
+    }
+
+    function executeTool(name, arg) {
+      switch (name) {
+        case "log_attendance": {
+          const [n, s] = arg.split(",").map(x => x.trim());
+          return logAttendance(n, s || "present");
+        }
+        case "check_attendance": return checkAttendance(arg);
+        case "flag_absentees": return flagAbsentees();
+        case "get_schedule": return getSchedule(arg);
+        default: return { text: `Unknown tool: ${name}` };
+      }
+    }
+
+    function parseToolCall(text) {
+      const m = text.match(/\[TOOL\s+(\w+)(?:\s+"([^"]*)")?\]/i);
+      return m ? { tool: m[1].toLowerCase(), arg: m[2] || "" } : null;
+    }
+
+    // --- Dashboard ---
+    function refreshDashboard(flashId) {
+      document.getElementById("dash-date").textContent = `Showing data for ${todayStr}`;
+      const tbody = document.getElementById("worker-table");
+      tbody.innerHTML = "";
+      let present = 0, absent = 0;
+
+      WORKERS.forEach(w => {
+        const status = getTodayStatus(w.id);
+        const rate = get30DayRate(w.id);
+        if (status === "present" || status === "late") present++;
+        else if (status === "absent") absent++;
+
+        const tr = document.createElement("tr");
+        if (w.id === flashId) tr.className = "flash";
+
+        let statusHtml;
+        if (status) {
+          statusHtml = `<span class="status-chip ${status}"><span class="status-dot ${status}"></span>${status}</span>`;
+        } else {
+          statusHtml = '<span class="status-chip none">—</span>';
+        }
+        const rateClass = rate >= 85 ? "rate-high" : rate >= 70 ? "rate-mid" : "rate-low";
+        tr.innerHTML = `
+          <td class="worker-name">${w.name}</td>
+          <td class="worker-role">${w.role}</td>
+          <td>${statusHtml}</td>
+          <td><span class="rate-bar"><span class="rate-bar-fill ${rateClass}" style="width:${rate}%"></span></span><span class="rate-text">${rate}%</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById("stat-present").textContent = present;
+      document.getElementById("stat-absent").textContent = absent;
+
+      const alertArea = document.getElementById("alert-area");
+      const flagged = WORKERS.filter(w => get30DayRate(w.id) < 70);
+      alertArea.innerHTML = flagged.length
+        ? `<div class="alert-banner" onclick="document.getElementById('input').value='Who needs attention?';document.getElementById('send').click()">⚠️ ${flagged.length} worker${flagged.length > 1 ? "s" : ""} below 70% — click to investigate</div>`
+        : "";
+    }
+
+    // --- System prompt ---
+    const SYSTEM_PROMPT = `You are a Rural Health Attendance Coach — an AI assistant helping district supervisors track community health worker attendance.
+
+AVAILABLE TOOLS:
+1. [TOOL log_attendance "worker name, status"] — status: present, absent, late
+2. [TOOL check_attendance "worker name"]
+3. [TOOL flag_absentees] — workers below 75%
+4. [TOOL get_schedule "district"] — leave empty for all
+
+RULES:
+- Use the right tool BEFORE answering.
+- Output EXACTLY ONE tool call per response, on its own line at the START.
+- After receiving results, give helpful analysis (2-4 sentences).
+- Suggest practical interventions for chronic absenteeism.
+- Be encouraging but honest.
+
+WORKERS: ${WORKERS.map(w => `${w.name} (${w.role}, ${w.district})`).join(", ")}
+
+EXAMPLES:
+User: "Mark Priya as present" → [TOOL log_attendance "Priya Sharma, present"]
+User: "How is Ravi doing?" → [TOOL check_attendance "Ravi Kumar"]
+User: "Who needs attention?" → [TOOL flag_absentees]
+User: "Show Dharwad schedule" → [TOOL get_schedule "Dharwad"]`;
+
+    // --- Init ---
+    const loadingEl = document.getElementById("loading");
+    const appEl = document.getElementById("app");
+    const progressEl = document.getElementById("progress");
+    const loadingStatus = document.getElementById("loading-status");
+    const chatMessages = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const toolCountEl = document.getElementById("tool-count");
+
+    const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+      initProgressCallback: ({ text, progress }) => {
+        loadingStatus.textContent = text;
+        if (progress !== undefined) progressEl.style.width = (progress * 100) + "%";
+      }
+    });
+
+    loadingEl.style.display = "none";
+    appEl.style.display = "grid";
+    refreshDashboard();
+
+    let chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+    let generating = false;
+    let toolCalls = 0;
+    const MAX_TOOL_ROUNDS = 3;
+
+    function addMessage(type, text) {
+      const div = document.createElement("div");
+      div.className = "message " + type;
+      if (type === "welcome") {
+        div.innerHTML = text;
+      } else {
+        div.textContent = text;
+      }
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function setInputEnabled(on) {
+      sendBtn.disabled = !on;
+      inputEl.disabled = !on;
+      generating = !on;
+    }
+
+    async function getModelResponse() {
+      const chunks = await engine.chat.completions.create({ messages: chatHistory, stream: true });
+      const el = addMessage("assistant", "");
+      let reply = "";
+      for await (const chunk of chunks) {
+        reply += chunk.choices[0]?.delta.content || "";
+        el.textContent = reply;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+      chatHistory.push({ role: "assistant", content: reply });
+      return { reply, el };
+    }
+
+    async function sendMessage(userText) {
+      chatHistory.push({ role: "user", content: userText });
+      addMessage("user", userText);
+      setInputEnabled(false);
+      const thinkingEl = addMessage("thinking", "Thinking");
+
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        if (round > 0) thinkingEl.remove();
+        const { reply, el } = await getModelResponse();
+        thinkingEl.remove();
+
+        const tc = parseToolCall(reply);
+        if (!tc) {
+          el.textContent = reply.replace(/\[TOOL\s+[^\]]*\]/gi, "").trim();
+          break;
+        }
+
+        el.textContent = `${tc.tool}${tc.arg ? ` → "${tc.arg}"` : ""}`;
+        el.className = "message tool-call";
+        toolCalls++;
+        toolCountEl.textContent = `${toolCalls} action${toolCalls !== 1 ? "s" : ""}`;
+
+        const result = executeTool(tc.tool, tc.arg);
+        addMessage("tool-result", result.text);
+
+        chatHistory.push({
+          role: "user",
+          content: `[TOOL RESULT]\n${result.text}\n[/TOOL RESULT]\n\nRespond based on this data. Be helpful and suggest next steps. Do not call another tool unless you need different information.`
+        });
+      }
+
+      setInputEnabled(true);
+      inputEl.focus();
+    }
+
+    // Welcome + suggestions
+    addMessage("welcome", `
+      <div style="font-size:1.3rem;margin-bottom:0.5rem;">👋</div>
+      <strong style="color:var(--text);">Rural Health Attendance Coach</strong><br>
+      <span style="font-size:0.8rem;">I help you track health worker attendance, flag absentees, and plan follow-ups — all offline.</span>
+      <div class="suggestions">
+        <button class="suggestion" data-msg="Mark Priya as present today">✅ Log attendance</button>
+        <button class="suggestion" data-msg="Who needs attention?">⚠️ Flag absentees</button>
+        <button class="suggestion" data-msg="Show me the Dharwad schedule">📋 View schedule</button>
+        <button class="suggestion" data-msg="How is Ravi Kumar doing?">👤 Check worker</button>
+      </div>
+    `);
+
+    // Suggestion clicks
+    chatMessages.addEventListener("click", (e) => {
+      const btn = e.target.closest(".suggestion");
+      if (btn && !generating) {
+        inputEl.value = btn.dataset.msg;
+        sendBtn.click();
+      }
+    });
+
+    inputEl.focus();
+
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      if (text && !generating) { inputEl.value = ""; sendMessage(text); }
+    });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !generating) sendBtn.click();
+    });
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+      chatMessages.innerHTML = "";
+      toolCalls = 0;
+      toolCountEl.textContent = "0 actions";
+      addMessage("welcome", `
+        <div style="font-size:1.3rem;margin-bottom:0.5rem;">👋</div>
+        <strong style="color:var(--text);">Rural Health Attendance Coach</strong><br>
+        <span style="font-size:0.8rem;">I help you track health worker attendance, flag absentees, and plan follow-ups — all offline.</span>
+        <div class="suggestions">
+          <button class="suggestion" data-msg="Mark Priya as present today">✅ Log attendance</button>
+          <button class="suggestion" data-msg="Who needs attention?">⚠️ Flag absentees</button>
+          <button class="suggestion" data-msg="Show me the Dharwad schedule">📋 View schedule</button>
+          <button class="suggestion" data-msg="How is Ravi Kumar doing?">👤 Check worker</button>
+        </div>
+      `);
+      inputEl.focus();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budget Helper</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .budget-panel {
+      background: white;
+      border-bottom: 1px solid #ddd;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .budget-panel table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .budget-panel th {
+      background: #f5f5f5;
+      padding: 0.4rem 0.8rem;
+      text-align: left;
+      font-weight: 600;
+      color: #555;
+      position: sticky;
+      top: 0;
+    }
+    .budget-panel td {
+      padding: 0.3rem 0.8rem;
+      border-top: 1px solid #eee;
+    }
+    .budget-panel td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+    .total-bar {
+      background: #1a73e8;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 1rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 0.8rem;
+      color: #999;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <h2>Loading Budget Helper...</h2>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div id="loading-status">Initializing...</div>
+  </div>
+
+  <div id="app">
+    <div class="header">
+      <h1>Budget Helper</h1>
+      <button id="clear-btn">Clear All</button>
+    </div>
+    <div class="total-bar">
+      <span id="item-count">0 expenses</span>
+      <span>Total: $<span id="total-amount">0.00</span></span>
+    </div>
+    <div class="budget-panel" id="budget-panel">
+      <div class="empty-state" id="empty-state">Tell me your expenses and I'll track them for you.</div>
+      <table id="expense-table" style="display:none;">
+        <thead><tr><th>Category</th><th>Amount</th></tr></thead>
+        <tbody id="expense-body"></tbody>
+      </table>
+    </div>
+    <div id="chat-messages"></div>
+    <div class="input-bar">
+      <input type="text" id="input" placeholder="e.g., 'Spent $45 on groceries and $12 on coffee'" />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+    const SYSTEM_PROMPT = `You are a budget assistant. Help the user track their expenses through conversation.
+
+Rules:
+- When the user mentions spending money, extract each expense and output a marker for it.
+- Format: [ADD category amount] — for example: [ADD groceries 45.00] or [ADD coffee 12.50]
+- You can output multiple [ADD] markers in one response if the user mentions multiple expenses.
+- The category should be a single lowercase word (food, transport, coffee, rent, entertainment, etc.)
+- The amount should be a number with two decimal places.
+- After adding expenses, briefly acknowledge what you added and offer a helpful tip or ask if there's more.
+- If the user asks for a summary, describe their spending patterns conversationally.
+- Chat normally for non-expense messages — you're friendly and helpful, not just a calculator.
+- Do NOT output [ADD] markers unless the user actually mentions a specific expense with an amount.`;
+
+    const WELCOME = "Hey! I'm your budget helper. Just tell me what you spent — like 'Had lunch for $15 and an Uber for $8' — and I'll keep track. Everything runs in your browser, so your finances stay private!";
+
+    const loadingEl = document.getElementById("loading");
+    const appEl = document.getElementById("app");
+    const progressEl = document.getElementById("progress");
+    const loadingStatus = document.getElementById("loading-status");
+    const chatMessages = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const clearBtn = document.getElementById("clear-btn");
+    const expenseBody = document.getElementById("expense-body");
+    const expenseTable = document.getElementById("expense-table");
+    const emptyState = document.getElementById("empty-state");
+    const totalAmountEl = document.getElementById("total-amount");
+    const itemCountEl = document.getElementById("item-count");
+
+    const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+      initProgressCallback: ({ text, progress }) => {
+        loadingStatus.textContent = text;
+        if (progress !== undefined) progressEl.style.width = (progress * 100) + "%";
+      }
+    });
+
+    loadingEl.style.display = "none";
+    appEl.style.display = "flex";
+
+    let chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+    let generating = false;
+    let expenses = [];
+
+    function updateBudgetUI() {
+      if (expenses.length === 0) {
+        emptyState.style.display = "block";
+        expenseTable.style.display = "none";
+      } else {
+        emptyState.style.display = "none";
+        expenseTable.style.display = "table";
+      }
+      expenseBody.innerHTML = "";
+      expenses.forEach(({ category, amount }) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${category}</td><td class="amount">$${amount.toFixed(2)}</td>`;
+        expenseBody.appendChild(row);
+      });
+      const total = expenses.reduce((sum, e) => sum + e.amount, 0);
+      totalAmountEl.textContent = total.toFixed(2);
+      itemCountEl.textContent = `${expenses.length} expense${expenses.length !== 1 ? "s" : ""}`;
+    }
+
+    function addMessage(type, text) {
+      const div = document.createElement("div");
+      div.className = "message " + type;
+      div.textContent = text;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function setInputEnabled(enabled) {
+      sendBtn.disabled = !enabled;
+      inputEl.disabled = !enabled;
+      generating = !enabled;
+    }
+
+    function onReply(text, el) {
+      const addRegex = /\[ADD\s+(\S+)\s+([\d.]+)\]/gi;
+      let match;
+      while ((match = addRegex.exec(text)) !== null) {
+        const category = match[1].toLowerCase();
+        const amount = parseFloat(match[2]);
+        if (!isNaN(amount) && amount > 0) {
+          expenses.push({ category, amount });
+        }
+      }
+      updateBudgetUI();
+
+      // Strip markers from displayed text
+      const clean = text.replace(/\[ADD\s+\S+\s+[\d.]+\]/gi, "").replace(/\[TOTAL\s+[\d.]+\]/gi, "").trim();
+      el.textContent = clean;
+    }
+
+    async function sendMessage(userText) {
+      chatHistory.push({ role: "user", content: userText });
+      addMessage("user", userText);
+      setInputEnabled(false);
+      const thinkingEl = addMessage("thinking", "Thinking...");
+
+      const chunks = await engine.chat.completions.create({
+        messages: chatHistory,
+        stream: true,
+      });
+
+      thinkingEl.remove();
+      const assistantEl = addMessage("assistant", "");
+
+      let reply = "";
+      for await (const chunk of chunks) {
+        reply += chunk.choices[0]?.delta.content || "";
+        assistantEl.textContent = reply;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      chatHistory.push({ role: "assistant", content: reply });
+      onReply(reply, assistantEl);
+      setInputEnabled(true);
+      inputEl.focus();
+    }
+
+    addMessage("welcome", WELCOME);
+    inputEl.focus();
+
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      if (text && !generating) { inputEl.value = ""; sendMessage(text); }
+    });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !generating) sendBtn.click();
+    });
+    clearBtn.addEventListener("click", () => {
+      chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+      chatMessages.innerHTML = "";
+      expenses = [];
+      updateBudgetUI();
+      addMessage("welcome", WELCOME);
+      inputEl.focus();
+    });
+  </script>
+</body>
+</html>

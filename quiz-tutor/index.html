@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz Tutor</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .score-bar {
+      background: #1a73e8;
+      color: white;
+      text-align: center;
+      padding: 0.4rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .message.correct { border-left: 4px solid #0d9488; }
+    .message.wrong { border-left: 4px solid #dc2626; }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <h2>Loading Quiz Tutor...</h2>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div id="loading-status">Initializing...</div>
+  </div>
+
+  <div id="app">
+    <div class="header">
+      <h1>Quiz Tutor</h1>
+      <button id="clear-btn">New Quiz</button>
+    </div>
+    <div class="score-bar" id="score-bar">Score: 0 / 0</div>
+    <div id="chat-messages"></div>
+    <div class="input-bar">
+      <input type="text" id="input" placeholder="Pick a topic or answer a question..." />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+    const SYSTEM_PROMPT = `You are a quiz tutor. The user will pick a topic and you will quiz them.
+
+Rules:
+- Ask ONE question at a time with 4 options (A, B, C, D).
+- Wait for the user to answer before moving on.
+- When the user answers, tell them if they are correct or wrong and briefly explain why.
+- Include the marker [CORRECT] in your response if they got it right.
+- Include the marker [WRONG] in your response if they got it wrong.
+- After explaining, immediately ask the next question.
+- Keep questions varied in difficulty.
+- Be encouraging and educational.`;
+
+    const WELCOME = "Hi! I'm your Quiz Tutor. Pick any topic — history, science, geography, movies, anything — and I'll quiz you!";
+
+    const loadingEl = document.getElementById("loading");
+    const appEl = document.getElementById("app");
+    const progressEl = document.getElementById("progress");
+    const loadingStatus = document.getElementById("loading-status");
+    const chatMessages = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const clearBtn = document.getElementById("clear-btn");
+    const scoreBar = document.getElementById("score-bar");
+
+    const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+      initProgressCallback: ({ text, progress }) => {
+        loadingStatus.textContent = text;
+        if (progress !== undefined) progressEl.style.width = (progress * 100) + "%";
+      }
+    });
+
+    loadingEl.style.display = "none";
+    appEl.style.display = "flex";
+
+    let chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+    let generating = false;
+    let correct = 0;
+    let total = 0;
+
+    function updateScore() {
+      scoreBar.textContent = `Score: ${correct} / ${total}`;
+    }
+
+    function addMessage(type, text) {
+      const div = document.createElement("div");
+      div.className = "message " + type;
+      div.textContent = text;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function setInputEnabled(enabled) {
+      sendBtn.disabled = !enabled;
+      inputEl.disabled = !enabled;
+      generating = !enabled;
+    }
+
+    function onReply(text, el) {
+      if (/\[CORRECT\]/i.test(text)) {
+        correct++;
+        total++;
+        el.classList.add("correct");
+      } else if (/\[WRONG\]/i.test(text)) {
+        total++;
+        el.classList.add("wrong");
+      }
+      updateScore();
+      // ponytail: strip markers from displayed text
+      el.textContent = text.replace(/\[(CORRECT|WRONG)\]/gi, "").trim();
+    }
+
+    async function sendMessage(userText) {
+      chatHistory.push({ role: "user", content: userText });
+      addMessage("user", userText);
+      setInputEnabled(false);
+      const thinkingEl = addMessage("thinking", "Thinking...");
+
+      const chunks = await engine.chat.completions.create({
+        messages: chatHistory,
+        stream: true,
+      });
+
+      thinkingEl.remove();
+      const assistantEl = addMessage("assistant", "");
+
+      let reply = "";
+      for await (const chunk of chunks) {
+        reply += chunk.choices[0]?.delta.content || "";
+        assistantEl.textContent = reply;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      chatHistory.push({ role: "assistant", content: reply });
+      onReply(reply, assistantEl);
+      setInputEnabled(true);
+      inputEl.focus();
+    }
+
+    addMessage("welcome", WELCOME);
+    inputEl.focus();
+
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      if (text && !generating) { inputEl.value = ""; sendMessage(text); }
+    });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !generating) sendBtn.click();
+    });
+    clearBtn.addEventListener("click", () => {
+      chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+      chatMessages.innerHTML = "";
+      correct = 0; total = 0; updateScore();
+      addMessage("welcome", WELCOME);
+      inputEl.focus();
+    });
+  </script>
+</body>
+</html>

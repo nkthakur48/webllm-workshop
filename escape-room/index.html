@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Escape Room Co-op</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { background: #1a1a2e; color: #e0e0e0; font-family: system-ui, -apple-system, sans-serif; }
+    #loading { color: #e0e0e0; }
+    #loading h2 { color: #e0e0e0; }
+    #loading-status { color: #aaa; }
+    .progress-fill { background: linear-gradient(90deg, #e94560, #7ec8e3); }
+
+    #app { display: none; flex-direction: row; height: 100vh; }
+
+    /* ── Room Panel ── */
+    #room-panel { width: 420px; display: flex; flex-direction: column; border-right: 2px solid #0f3460; background: #16213e; }
+    #room-header { background: #0f3460; padding: 10px 16px; font-weight: 700; font-size: 15px; text-align: center; color: #e94560; }
+    #room-visual { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+
+    .wall-card { background: #1a1a2e; border-radius: 8px; padding: 10px 12px; border-left: 4px solid #555; }
+    .wall-card .wall-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .wall-card .wall-title .agent-avatar { width: 32px; height: 32px; image-rendering: pixelated; }
+    .wall-card .obj { font-size: 12px; color: #aaa; padding: 3px 0; line-height: 1.4; }
+    .wall-card .obj.solved { color: #4CAF50; }
+    .wall-card .obj.active { color: #ffd700; }
+
+    #puzzle-status { padding: 10px 16px; background: #0f3460; font-size: 13px; }
+    #puzzle-status .pz { margin: 3px 0; }
+    #puzzle-status .done { color: #4CAF50; }
+
+    /* ── Chat Panel ── */
+    #chat-panel { flex: 1; display: flex; flex-direction: column; }
+    #chat-header { background: #0f3460; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; }
+    #chat-header h2 { font-size: 14px; font-weight: 600; }
+    #round-display { color: #7ec8e3; font-size: 13px; }
+
+    #chat-log { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+    .chat-entry { font-size: 13px; line-height: 1.5; padding: 6px 10px; border-radius: 8px; background: #16213e; }
+    .chat-entry .agent-name { font-weight: 700; }
+    .chat-entry .thought { color: #666; font-style: italic; font-size: 11px; display: block; margin-top: 2px; }
+    .chat-entry .action-result { color: #7ec8e3; font-size: 12px; display: block; margin-top: 2px; }
+    .chat-entry.system-msg { background: #0f3460; color: #e94560; text-align: center; font-weight: 600; }
+
+    #controls { padding: 10px 16px; background: #16213e; border-top: 1px solid #0f3460; display: flex; gap: 8px; }
+    #controls button { flex: 1; padding: 8px; background: #e94560; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; }
+    #controls button:hover { background: #c73650; }
+    #controls button:disabled { opacity: 0.4; cursor: default; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <h2>Escape Room Co-op</h2>
+  <p style="color:#7ec8e3; margin-bottom:16px; font-size:0.9rem;">3 AI agents collaborate to solve puzzles and escape</p>
+  <div class="progress-bar" style="width:400px;"><div class="progress-fill" id="progress"></div></div>
+  <div id="loading-status">Initializing WebLLM engine...</div>
+</div>
+
+<div id="app">
+  <div id="room-panel">
+    <div id="room-header">ESCAPE ROOM</div>
+    <div id="room-visual"></div>
+    <div id="puzzle-status"></div>
+  </div>
+  <div id="chat-panel">
+    <div id="chat-header">
+      <h2>Agent Comms</h2>
+      <span id="round-display">Round 0</span>
+    </div>
+    <div id="chat-log"></div>
+    <div id="controls">
+      <button id="btn-step" disabled>Next Round</button>
+      <button id="btn-auto" disabled>Auto Play</button>
+      <button id="btn-reset" disabled>Reset Room</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+// ── Sprite helpers (reuse NPC civilization spritesheet) ──
+const SPRITE_SHEET = "npc-civilization/chars.png";
+const SHEET_COLS = 12, FRAME_W = 32, FRAME_H = 32;
+function spriteFrame(col, row) {
+  // returns CSS background-position for a 32x32 frame in the sheet
+  return { x: col * FRAME_W, y: row * FRAME_W };
+}
+function makeAvatarImg(col, row) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 32; canvas.height = 32;
+  canvas.className = "agent-avatar";
+  const img = new Image();
+  img.src = SPRITE_SHEET;
+  img.onload = () => {
+    const ctx = canvas.getContext("2d");
+    // draw the center-facing-down frame (col+1)
+    ctx.drawImage(img, (col + 1) * FRAME_W, row * FRAME_H, FRAME_W, FRAME_H, 0, 0, 32, 32);
+  };
+  return canvas;
+}
+
+// ── Agent definitions ──
+const AGENTS = [
+  { id: "alpha", name: "ALPHA", color: "#4CAF50", wall: "North", spriteCol: 0, spriteRow: 8,
+    personality: "analytical and methodical. You examine things carefully and share precise details." },
+  { id: "beta",  name: "BETA",  color: "#FF9800", wall: "East",  spriteCol: 3, spriteRow: 16,
+    personality: "creative and intuitive. You spot patterns and connections others miss." },
+  { id: "gamma", name: "GAMMA", color: "#e94560", wall: "South", spriteCol: 6, spriteRow: 12,
+    personality: "action-oriented and hands-on. You want to try things and test solutions." },
+];
+
+// ── Room State ──
+let room;
+function initRoom() {
+  room = {
+    round: 0, escaped: false,
+    drawerOpen: false, safeOpen: false, hasKey: false,
+    // North wall (Alpha)
+    painting:  { area: "alpha", brief: "A large painting on the wall", detail: null },
+    clock:     { area: "alpha", brief: "An ornate wall clock", detail: null },
+    door:      { area: "alpha", brief: "A heavy locked door with a brass keyhole", detail: null },
+    // East wall (Beta)
+    bookshelf: { area: "beta",  brief: "A bookshelf with colorful books", detail: null },
+    window:    { area: "beta",  brief: "A barred window with scratches on the sill", detail: null },
+    // South wall (Gamma)
+    desk:      { area: "gamma", brief: "An oak desk with a locked 4-digit drawer", detail: null },
+    safe:      { area: "gamma", brief: "A metal safe with a 3-digit combination", detail: null },
+  };
+  agentMemory = { alpha: [], beta: [], gamma: [] };
+  conversationLog = [];
+}
+
+// ponytail: clue data separated from objects — adding a puzzle = editing this block
+const EXAMINE_DETAILS = {
+  painting:  "The painting shows a sunset. Four colored circles are arranged left to right: Red, Blue, Green, Yellow.",
+  clock:     "The clock reads exactly 8 o'clock. The hour hand points straight down to 8.",
+  door:      "A sturdy wooden door. The keyhole is empty. This is the only way out.",
+  bookshelf: "Five books with large numbers printed on their spines: Red book = 7, Blue book = 2, Green book = 5, Yellow book = 9, Purple book = 0.",
+  window:    "Barred shut. Scratched into the wooden sill: 'The PAINTING shows the ORDER of the colors.'",
+  desk:      "A heavy oak desk standing on 4 sturdy legs. The drawer has a 4-digit combination lock (digits 0-9).",
+  safe:      "A floor-bolted metal safe. The combination dial goes from 000 to 999.",
+};
+const DESK_CODE = "7259"; // Red=7, Blue=2, Green=5, Yellow=9 ordered by painting
+const SAFE_CODE = "824";  // hour=8, red books=2, desk legs=4
+
+let agentMemory = {};
+let conversationLog = [];
+
+// ── Object descriptions per agent ──
+function getObjectsForAgent(agentId) {
+  const objs = [];
+  for (const [name, obj] of Object.entries(room)) {
+    if (typeof obj !== "object" || !obj.area) continue;
+    if (obj.area !== agentId) continue;
+    const status = obj.detail ? "(examined)" : "";
+    let desc = obj.detail || obj.brief;
+    // dynamic updates
+    if (name === "desk" && room.drawerOpen) desc = "The desk drawer is OPEN. Inside: a yellowed note.";
+    if (name === "safe" && room.safeOpen) desc = "The safe is OPEN. Inside: a brass key.";
+    if (name === "door" && room.hasKey) desc = "The locked door. You have the brass key.";
+    if (name === "door" && room.escaped) desc = "The door is OPEN! You escaped!";
+    objs.push({ name, desc, status });
+  }
+  // show note after drawer opens (Gamma's area)
+  if (agentId === "gamma" && room.drawerOpen && !room.safeOpen) {
+    objs.push({ name: "note", desc: "A yellowed note reads: 'SAFE CODE — first digit: the HOUR on the north wall clock. Second digit: count the RED books on the east shelf. Third digit: count the LEGS on this desk.'", status: "" });
+  }
+  if (agentId === "gamma" && room.safeOpen && !room.escaped) {
+    objs.push({ name: "key", desc: "A brass key from the safe. It looks like it fits the door on the NORTH wall.", status: "" });
+  }
+  return objs;
+}
+
+// ── Action execution ──
+function executeAgentAction(agentId, action) {
+  const a = (action.action || "").toLowerCase();
+  const target = (action.object || action.target || "").toLowerCase().replace(/\s+/g, "");
+  const value = (action.value || action.input || "").toString().trim();
+
+  if (a === "look" || a === "observe" || a === "examine") {
+    // find the object
+    if (room[target] && room[target].area === agentId) {
+      room[target].detail = EXAMINE_DETAILS[target] || room[target].brief;
+      return { ok: true, text: `examined the ${target}: ${room[target].detail}` };
+    }
+    return { ok: false, text: `can't examine '${target}' — not in your area` };
+  }
+
+  if (a === "use" || a === "try" || a === "enter" || a === "open" || a === "unlock") {
+    if ((target === "desk" || target === "drawer") && agentId === "gamma" && !room.drawerOpen) {
+      if (value === DESK_CODE) {
+        room.drawerOpen = true;
+        return { ok: true, text: `entered ${value} on the desk drawer — CLICK! It opens! There's a note inside.`, solved: "drawer" };
+      }
+      return { ok: false, text: `tried code ${value} on desk drawer — wrong combination.` };
+    }
+    if (target === "safe" && agentId === "gamma" && !room.safeOpen) {
+      if (room.drawerOpen) {
+        if (value === SAFE_CODE) {
+          room.safeOpen = true;
+          return { ok: true, text: `entered ${value} on the safe — CLICK! It opens! There's a brass key inside!`, solved: "safe" };
+        }
+        return { ok: false, text: `tried code ${value} on safe — wrong combination.` };
+      }
+      return { ok: false, text: "the safe might need a code — maybe solve the desk first?" };
+    }
+    if (target === "door" && agentId === "alpha") {
+      if (room.safeOpen || room.hasKey) {
+        room.hasKey = true;
+        room.escaped = true;
+        return { ok: true, text: "inserted the brass key and turned it — the door OPENS! You escaped!", solved: "door" };
+      }
+      return { ok: false, text: "the door is locked. Need a key." };
+    }
+    // Gamma can pass key info
+    if ((target === "key" || target === "door") && agentId === "gamma" && room.safeOpen) {
+      room.hasKey = true;
+      return { ok: true, text: "picked up the brass key from the safe. Alpha, use this on the door!" };
+    }
+    return { ok: false, text: `can't use '${target}' right now.` };
+  }
+
+  if (a === "say" || a === "tell" || a === "talk") {
+    return { ok: true, text: action.message || "..." };
+  }
+
+  // default to saying something
+  if (action.message) return { ok: true, text: action.message };
+  return { ok: false, text: "didn't understand that action" };
+}
+
+// ── LLM ──
+let engine = null;
+
+function buildPrompt(agent) {
+  const objs = getObjectsForAgent(agent.id);
+  const objList = objs.map(o => `  - ${o.name}: ${o.desc}`).join("\n");
+  const recentChat = conversationLog.slice(-10).map(e => `${e.agent}: ${e.text}`).join("\n");
+  const mem = agentMemory[agent.id].slice(-5).join("\n");
+
+  const puzzleState = [
+    room.drawerOpen ? "SOLVED: Desk drawer is open" : "UNSOLVED: Desk drawer (4-digit code)",
+    room.safeOpen ? "SOLVED: Safe is open" : "UNSOLVED: Safe (3-digit code)",
+    room.escaped ? "SOLVED: Door is open — ESCAPED!" : "UNSOLVED: Door (needs a key)",
+  ].join("\n");
+
+  return `You are Agent ${agent.name}, trapped in an escape room with ALPHA, BETA, and GAMMA. ${agent.personality}
+
+YOUR AREA (${agent.wall} wall):
+${objList}
+
+PUZZLE PROGRESS:
+${puzzleState}
+
+RECENT CONVERSATION:
+${recentChat || "none yet"}
+
+YOUR NOTES:
+${mem || "none yet"}
+
+ACTIONS (pick ONE):
+- look [object]: examine something in your area closely
+- say [message]: tell your partners something important
+- use [object] [value]: enter a code or use an item
+
+${!room.drawerOpen ? "HINT: You need to share what you each see. Examine objects first, then tell partners what you found." : ""}
+${room.drawerOpen && !room.safeOpen ? "HINT: The note in the drawer describes how to find the safe code. Share the clues!" : ""}
+${room.safeOpen && !room.escaped ? "HINT: The key is in the safe. Use it on the door!" : ""}
+
+Respond with ONLY valid JSON:
+{"action":"look|say|use","object":"target name","value":"code if using","message":"what you say to partners","thought":"your reasoning"}`;
+}
+
+async function queryAgent(agent) {
+  const prompt = buildPrompt(agent);
+  try {
+    const res = await engine.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 150,
+    });
+    const raw = res.choices[0].message.content;
+    return parseJSON(raw);
+  } catch (e) {
+    console.warn(`LLM error for ${agent.name}:`, e);
+    return { action: "say", message: "I'm confused, let me think...", thought: "error" };
+  }
+}
+
+function parseJSON(raw) {
+  try { return JSON.parse(raw); } catch {}
+  const m = raw.match(/\{[\s\S]*?\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch {} }
+  return { action: "say", message: "Hmm, let me think about this...", thought: "parse failed" };
+}
+
+// ── UI ──
+function renderRoom() {
+  const visual = document.getElementById("room-visual");
+  visual.innerHTML = AGENTS.map(agent => {
+    const objs = getObjectsForAgent(agent.id);
+    return `<div class="wall-card" style="border-color:${agent.color}">
+      <div class="wall-title">
+        <canvas class="agent-avatar" id="avatar-${agent.id}" width="32" height="32" style="image-rendering:pixelated;"></canvas>
+        <span style="color:${agent.color}">${agent.name}</span> — ${agent.wall} Wall
+      </div>
+      ${objs.map(o => `<div class="obj">${o.name}: ${o.desc}</div>`).join("")}
+    </div>`;
+  }).join("");
+
+  // draw avatars
+  const img = new Image();
+  img.src = SPRITE_SHEET;
+  img.onload = () => {
+    AGENTS.forEach(a => {
+      const canvas = document.getElementById(`avatar-${a.id}`);
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, 32, 32);
+      ctx.drawImage(img, (a.spriteCol + 1) * FRAME_W, a.spriteRow * FRAME_H, FRAME_W, FRAME_H, 0, 0, 32, 32);
+    });
+  };
+
+  // puzzle status
+  const ps = document.getElementById("puzzle-status");
+  ps.innerHTML = `
+    <div class="pz ${room.drawerOpen ? 'done' : ''}">1. Desk Drawer: ${room.drawerOpen ? '✅ Open' : '🔒 Locked (4-digit code)'}</div>
+    <div class="pz ${room.safeOpen ? 'done' : ''}">2. Safe: ${room.safeOpen ? '✅ Open' : '🔒 Locked (3-digit code)'}</div>
+    <div class="pz ${room.escaped ? 'done' : ''}">3. Door: ${room.escaped ? '✅ ESCAPED!' : '🔒 Locked (needs key)'}</div>`;
+}
+
+function addChatEntry(agent, text, thought, actionResult) {
+  const log = document.getElementById("chat-log");
+  const div = document.createElement("div");
+  div.className = "chat-entry";
+  let html = `<span class="agent-name" style="color:${agent.color}">[${agent.name}]</span> `;
+  html += text;
+  if (actionResult) html += `<span class="action-result">→ ${actionResult}</span>`;
+  if (thought) html += `<span class="thought">💭 ${thought}</span>`;
+  div.innerHTML = html;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addSystemMsg(text) {
+  const log = document.getElementById("chat-log");
+  const div = document.createElement("div");
+  div.className = "chat-entry system-msg";
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ── Game Loop ──
+let processing = false, autoPlay = false;
+
+async function runRound() {
+  if (processing || room.escaped) return;
+  processing = true;
+  room.round++;
+  document.getElementById("round-display").textContent = `Round ${room.round}`;
+  document.getElementById("btn-step").disabled = true;
+
+  addSystemMsg(`── Round ${room.round} ──`);
+
+  for (const agent of AGENTS) {
+    if (room.escaped) break;
+
+    // show thinking
+    const thinkDiv = document.createElement("div");
+    thinkDiv.className = "chat-entry";
+    thinkDiv.innerHTML = `<span class="agent-name" style="color:${agent.color}">[${agent.name}]</span> <em style="color:#666">thinking...</em>`;
+    document.getElementById("chat-log").appendChild(thinkDiv);
+    document.getElementById("chat-log").scrollTop = 99999;
+
+    const action = await queryAgent(agent);
+    thinkDiv.remove();
+
+    const result = executeAgentAction(agent.id, action);
+    const displayText = action.action === "say" ? action.message || result.text : `[${action.action} ${action.object || ""}] ${action.message || ""}`;
+
+    addChatEntry(agent, displayText, action.thought, result.text !== displayText ? result.text : null);
+    conversationLog.push({ agent: agent.name, text: `${displayText}${result.text ? ' → ' + result.text : ''}` });
+    agentMemory[agent.id].push(`Round ${room.round}: I ${action.action} ${action.object || ""} → ${result.text}`);
+
+    if (result.solved) {
+      addSystemMsg(`🎉 Puzzle solved: ${result.solved}!`);
+    }
+
+    renderRoom();
+    await delay(400);
+  }
+
+  if (room.escaped) {
+    addSystemMsg(`🏆 ALL PUZZLES SOLVED! Escaped in ${room.round} rounds!`);
+    document.getElementById("btn-auto").disabled = true;
+  }
+
+  document.getElementById("btn-step").disabled = false;
+  processing = false;
+
+  if (autoPlay && !room.escaped) {
+    await delay(600);
+    runRound();
+  }
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Init ──
+const progressEl = document.getElementById("progress");
+const statusEl = document.getElementById("loading-status");
+
+engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+  initProgressCallback: ({ text, progress }) => {
+    statusEl.textContent = text;
+    if (progress !== undefined) progressEl.style.width = (progress * 100) + "%";
+  }
+});
+
+document.getElementById("loading").style.display = "none";
+document.getElementById("app").style.display = "flex";
+
+initRoom();
+renderRoom();
+addSystemMsg("3 agents are trapped in a room. They each see a different wall. They must collaborate to escape.");
+addSystemMsg("Press 'Next Round' or 'Auto Play' to begin.");
+
+document.getElementById("btn-step").disabled = false;
+document.getElementById("btn-auto").disabled = false;
+document.getElementById("btn-reset").disabled = false;
+
+document.getElementById("btn-step").onclick = () => runRound();
+document.getElementById("btn-auto").onclick = () => {
+  autoPlay = !autoPlay;
+  document.getElementById("btn-auto").textContent = autoPlay ? "Pause" : "Auto Play";
+  if (autoPlay && !processing) runRound();
+};
+document.getElementById("btn-reset").onclick = () => {
+  initRoom();
+  document.getElementById("chat-log").innerHTML = "";
+  document.getElementById("round-display").textContent = "Round 0";
+  document.getElementById("btn-auto").textContent = "Auto Play";
+  autoPlay = false;
+  renderRoom();
+  addSystemMsg("Room reset. 3 agents trapped again. Press 'Next Round' to begin.");
+};
+</script>
+</body>
+</html>

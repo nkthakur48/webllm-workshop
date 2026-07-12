@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flashcard Generator</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .main-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    .flashcard-panel {
+      flex: 3 1 0;
+      display: flex;
+      flex-direction: column;
+      background: #e8f0fe;
+      border-right: 1px solid #ddd;
+      overflow: auto;
+    }
+    .chat-panel {
+      flex: 1 1 0;
+      min-width: 280px;
+      display: flex;
+      flex-direction: column;
+      background: white;
+    }
+    .deck-bar {
+      background: #1a73e8;
+      color: white;
+      text-align: center;
+      padding: 0.4rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .flashcard-area {
+      display: none;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .flashcard-area > div {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .flashcard-placeholder {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+      color: #7a8ba6;
+      font-size: 1.1rem;
+    }
+    .flashcard {
+      width: 80%;
+      height: min(50vh, 340px);
+      perspective: 900px;
+      cursor: pointer;
+    }
+    .flashcard-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.5s;
+      transform-style: preserve-3d;
+    }
+    .flashcard.flipped .flashcard-inner { transform: rotateY(180deg); }
+    .flashcard-front, .flashcard-back {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      backface-visibility: hidden;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+      font-size: 1.3rem;
+      line-height: 1.5;
+    }
+    .flashcard-front {
+      background: white;
+      color: #333;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .flashcard-back {
+      background: #4285f4;
+      color: white;
+      transform: rotateY(180deg);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .flashcard-hint {
+      font-size: 0.75rem;
+      color: #888;
+      text-align: center;
+      margin-top: 0.4rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <h2>Loading Flashcard Generator...</h2>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div id="loading-status">Initializing...</div>
+  </div>
+
+  <div id="app">
+    <div class="header">
+      <h1>Flashcard Generator</h1>
+      <button id="clear-btn">Clear Deck</button>
+    </div>
+    <div class="main-layout">
+      <div class="flashcard-panel">
+        <div class="deck-bar" id="deck-bar">Deck: 0 cards</div>
+        <div class="flashcard-placeholder" id="flashcard-placeholder">Give me a topic to generate your first flashcard!</div>
+        <div class="flashcard-area" id="flashcard-area">
+          <div>
+            <div class="flashcard" id="flashcard">
+              <div class="flashcard-inner">
+                <div class="flashcard-front" id="card-front">Front</div>
+                <div class="flashcard-back" id="card-back">Back</div>
+              </div>
+            </div>
+            <div class="flashcard-hint">Click card to flip</div>
+          </div>
+        </div>
+      </div>
+      <div class="chat-panel">
+        <div id="chat-messages"></div>
+        <div class="input-bar">
+          <input type="text" id="input" placeholder="Give me a topic... (e.g., 'Spanish basics')" />
+          <button id="send">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+    const SYSTEM_PROMPT = `You are a flashcard creator. The user gives you a topic and you generate flashcards to help them study.
+
+Rules:
+- Generate ONE flashcard at a time.
+- Format each flashcard exactly like this:
+  [FRONT] The question, term, or prompt [/FRONT]
+  [BACK] The answer, definition, or explanation [/BACK]
+- After each card, briefly encourage the user and ask if they want another card on the same topic or a new topic.
+- Make cards progressively harder as you generate more for the same topic.
+- Keep front text short (a question or term). Keep back text concise but complete.`;
+
+    const WELCOME = "Hi! I'll create flashcards for any topic. Just tell me what you want to study — languages, science, history, coding concepts, anything!";
+
+    const loadingEl = document.getElementById("loading");
+    const appEl = document.getElementById("app");
+    const progressEl = document.getElementById("progress");
+    const loadingStatus = document.getElementById("loading-status");
+    const chatMessages = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const clearBtn = document.getElementById("clear-btn");
+    const deckBar = document.getElementById("deck-bar");
+    const flashcardArea = document.getElementById("flashcard-area");
+    const flashcardPlaceholder = document.getElementById("flashcard-placeholder");
+    const flashcard = document.getElementById("flashcard");
+    const cardFront = document.getElementById("card-front");
+    const cardBack = document.getElementById("card-back");
+
+    const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+      initProgressCallback: ({ text, progress }) => {
+        loadingStatus.textContent = text;
+        if (progress !== undefined) progressEl.style.width = (progress * 100) + "%";
+      }
+    });
+
+    loadingEl.style.display = "none";
+    appEl.style.display = "flex";
+
+    let chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+    let generating = false;
+    let deckCount = 0;
+
+    flashcard.addEventListener("click", () => flashcard.classList.toggle("flipped"));
+
+    function addMessage(type, text) {
+      const div = document.createElement("div");
+      div.className = "message " + type;
+      div.textContent = text;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function setInputEnabled(enabled) {
+      sendBtn.disabled = !enabled;
+      inputEl.disabled = !enabled;
+      generating = !enabled;
+    }
+
+    function onReply(text, el) {
+      const frontMatch = text.match(/\[FRONT\]\s*([\s\S]*?)\s*\[\/FRONT\]/i);
+      const backMatch = text.match(/\[BACK\]\s*([\s\S]*?)\s*\[\/BACK\]/i);
+
+      if (frontMatch && backMatch) {
+        cardFront.textContent = frontMatch[1].trim();
+        cardBack.textContent = backMatch[1].trim();
+        flashcard.classList.remove("flipped");
+        flashcardPlaceholder.style.display = "none";
+        flashcardArea.style.display = "flex";
+        deckCount++;
+        deckBar.textContent = `Deck: ${deckCount} card${deckCount !== 1 ? "s" : ""}`;
+      }
+
+      // Strip markers from chat display
+      const clean = text
+        .replace(/\[FRONT\][\s\S]*?\[\/FRONT\]/gi, "")
+        .replace(/\[BACK\][\s\S]*?\[\/BACK\]/gi, "")
+        .trim();
+      el.textContent = clean || "Card created! Click it to flip.";
+    }
+
+    async function sendMessage(userText) {
+      chatHistory.push({ role: "user", content: userText });
+      addMessage("user", userText);
+      setInputEnabled(false);
+      const thinkingEl = addMessage("thinking", "Creating card...");
+
+      const chunks = await engine.chat.completions.create({
+        messages: chatHistory,
+        stream: true,
+      });
+
+      thinkingEl.remove();
+      const assistantEl = addMessage("assistant", "");
+
+      let reply = "";
+      for await (const chunk of chunks) {
+        reply += chunk.choices[0]?.delta.content || "";
+        assistantEl.textContent = reply;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      chatHistory.push({ role: "assistant", content: reply });
+      onReply(reply, assistantEl);
+      setInputEnabled(true);
+      inputEl.focus();
+    }
+
+    addMessage("welcome", WELCOME);
+    inputEl.focus();
+
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      if (text && !generating) { inputEl.value = ""; sendMessage(text); }
+    });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !generating) sendBtn.click();
+    });
+    clearBtn.addEventListener("click", () => {
+      chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+      chatMessages.innerHTML = "";
+      deckCount = 0;
+      deckBar.textContent = "Deck: 0 cards";
+      flashcardArea.style.display = "none";
+      flashcardPlaceholder.style.display = "flex";
+      addMessage("welcome", WELCOME);
+      inputEl.focus();
+    });
+  </script>
+</body>
+</html>
