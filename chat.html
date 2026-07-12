@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Loading screen (visible while model downloads) -->
+  <div id="loading">
+    <h2>Booting local model</h2>
+    <div id="model-tag">gemma-2-2b-it · q4f16 · WebGPU</div>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div id="loading-status">Initializing...</div>
+  </div>
+
+  <!-- Chat app (hidden until model is ready) -->
+  <div id="app">
+    <div class="header">
+      <div class="header-title">
+        <h1 id="agent-name">AI Assistant</h1>
+      </div>
+      <div style="display:flex; align-items:center; gap:0.7rem;">
+        <span class="status-pill"><span class="dot"></span>Local · GPU</span>
+        <button id="clear-btn">Clear Chat</button>
+      </div>
+    </div>
+    <div id="chat-messages"></div>
+    <div class="input-bar">
+      <input type="text" id="input" placeholder="Type a message..." />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+    // ============================================================
+    // CUSTOMIZE YOUR AGENT HERE
+    // ============================================================
+    const AGENT_NAME = "AI Assistant";
+    const SYSTEM_PROMPT = `You are a friendly and helpful assistant. Keep your responses concise — two to three sentences unless asked for more detail.`;
+    const WELCOME_MESSAGE = "Hi! I'm your AI assistant running entirely in your browser. No servers, no API keys. How can I help?";
+    // ============================================================
+
+    const loadingEl = document.getElementById("loading");
+    const appEl = document.getElementById("app");
+    const progressEl = document.getElementById("progress");
+    const loadingStatus = document.getElementById("loading-status");
+    const chatMessages = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const clearBtn = document.getElementById("clear-btn");
+
+    document.getElementById("agent-name").textContent = AGENT_NAME;
+    document.title = AGENT_NAME;
+
+    // --- 1. Load the model ---
+    const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+      initProgressCallback: ({ text, progress }) => {
+        loadingStatus.textContent = text;
+        if (progress !== undefined) {
+          progressEl.style.width = (progress * 100) + "%";
+        }
+      }
+    });
+
+    loadingEl.style.display = "none";
+    appEl.style.display = "flex";
+    addMessage("welcome", WELCOME_MESSAGE);
+    inputEl.focus();
+
+    // --- 2. Chat state ---
+    let chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+    let generating = false;
+
+    // --- 3. DOM helpers ---
+    function addMessage(type, text) {
+      const div = document.createElement("div");
+      div.className = "message " + type;
+      div.textContent = text;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function setInputEnabled(enabled) {
+      sendBtn.disabled = !enabled;
+      inputEl.disabled = !enabled;
+      generating = !enabled;
+    }
+
+    // --- 4. Send + stream ---
+    async function sendMessage(userText) {
+      chatHistory.push({ role: "user", content: userText });
+      addMessage("user", userText);
+
+      setInputEnabled(false);
+      const thinkingEl = addMessage("thinking", "Thinking...");
+
+      const chunks = await engine.chat.completions.create({
+        messages: chatHistory,
+        stream: true,
+      });
+
+      thinkingEl.remove();
+      const assistantEl = addMessage("assistant", "");
+      const startTime = performance.now();
+
+      let assistantReply = "";
+      for await (const chunk of chunks) {
+        assistantReply += chunk.choices[0]?.delta.content || "";
+        assistantEl.innerHTML = marked.parse(assistantReply);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      const seconds = (performance.now() - startTime) / 1000;
+      const tokensPerSec = Math.round((assistantReply.length / 4) / seconds);
+      addMessage("meta", `⚡ ${tokensPerSec} tok/s · on-device`);
+
+      chatHistory.push({ role: "assistant", content: assistantReply });
+      setInputEnabled(true);
+      inputEl.focus();
+    }
+
+    // --- 5. Event listeners ---
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      if (text && !generating) { inputEl.value = ""; sendMessage(text); }
+    });
+
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !generating) sendBtn.click();
+    });
+
+    clearBtn.addEventListener("click", () => {
+      chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+      chatMessages.innerHTML = "";
+      addMessage("welcome", WELCOME_MESSAGE);
+      inputEl.focus();
+    });
+  </script>
+</body>
+</html>

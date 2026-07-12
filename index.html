@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Build Your Own Browser AI Agent — Workshop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #0f172a; color: #cbd5e1;
+      min-height: 100vh; padding: 3rem 1.5rem;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 {
+      font-weight: 900; font-size: 2.2rem;
+      background: linear-gradient(135deg, #4285f4, #a855f7);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; margin-bottom: 0.3rem;
+    }
+    .subtitle { color: #94a3b8; font-size: 0.95rem; margin-bottom: 2.5rem; }
+    h2 {
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: #64748b; margin: 2rem 0 0.8rem;
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.8rem; }
+    a.card {
+      display: block; text-decoration: none;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; padding: 1.2rem; transition: all 0.2s;
+    }
+    a.card:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(66,133,244,0.4);
+      transform: translateY(-2px);
+    }
+    .card .icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .card .name { color: #e2e8f0; font-weight: 600; font-size: 0.95rem; }
+    .card .desc { color: #94a3b8; font-size: 0.75rem; margin-top: 0.3rem; line-height: 1.4; }
+    .badge {
+      display: inline-block; font-size: 0.6rem; font-weight: 600;
+      padding: 0.15em 0.5em; border-radius: 10px; margin-left: 0.4em;
+      vertical-align: middle;
+    }
+    .badge-green { background: rgba(13,148,136,0.2); color: #0d9488; }
+    .badge-purple { background: rgba(168,85,247,0.2); color: #a855f7; }
+    .badge-blue { background: rgba(66,133,244,0.2); color: #4285f4; }
+    footer { margin-top: 3rem; color: #475569; font-size: 0.75rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Build Your Own Browser AI Agent</h1>
+    <p class="subtitle">2-hour workshop · Zero cost · 100% in your browser</p>
+
+    <h2>Getting Started</h2>
+    <div class="grid">
+      <a class="card" href="slides.html">
+        <div class="icon">📽️</div>
+        <div class="name">Slides</div>
+        <div class="desc">Workshop presentation deck</div>
+      </a>
+      <a class="card" href="precache.html">
+        <div class="icon">📦</div>
+        <div class="name">Pre-cache Model</div>
+        <div class="desc">Download the AI model before the session</div>
+      </a>
+    </div>
+
+    <h2>Workshop Files</h2>
+    <div class="grid">
+      <a class="card" href="basic.html">
+        <div class="icon">📝</div>
+        <div class="name">Basic <span class="badge badge-green">start here</span></div>
+        <div class="desc">Minimal hello-world — non-streaming, console output</div>
+      </a>
+      <a class="card" href="checkpoint.html">
+        <div class="icon">✅</div>
+        <div class="name">Checkpoint</div>
+        <div class="desc">Phase 1 catch-up — streaming + multi-turn + persona</div>
+      </a>
+      <a class="card" href="chat.html">
+        <div class="icon">💬</div>
+        <div class="name">Chat <span class="badge badge-blue">final</span></div>
+        <div class="desc">Polished chat UI — the finished product</div>
+      </a>
+      <a class="card" href="research-agent.html">
+        <div class="icon">🔍</div>
+        <div class="name">Research Agent <span class="badge badge-purple">advanced</span></div>
+        <div class="desc">Tool-calling agent — Wikipedia, weather, calculator</div>
+      </a>
+    </div>
+
+    <h2>Bonus Examples</h2>
+    <div class="grid">
+      <a class="card" href="adventure/index.html">
+        <div class="icon">🗺️</div>
+        <div class="name">Adventure</div>
+        <div class="desc">Choose-your-own-adventure game</div>
+      </a>
+      <a class="card" href="quiz-tutor/index.html">
+        <div class="icon">📝</div>
+        <div class="name">Quiz Tutor</div>
+        <div class="desc">Quiz with live score tracking</div>
+      </a>
+      <a class="card" href="budget/index.html">
+        <div class="icon">💰</div>
+        <div class="name">Budget Tracker</div>
+        <div class="desc">AI-powered expense tracking</div>
+      </a>
+      <a class="card" href="flashcards/index.html">
+        <div class="icon">🃏</div>
+        <div class="name">Flashcards</div>
+        <div class="desc">AI-generated cards with 3D flip</div>
+      </a>
+      <a class="card" href="escape-room/index.html">
+        <div class="icon">🚪</div>
+        <div class="name">Escape Room</div>
+        <div class="desc">Multi-agent puzzle with pixel sprites</div>
+      </a>
+      <a class="card" href="npc-civilization/index.html">
+        <div class="icon">🏰</div>
+        <div class="name">NPC Civilization</div>
+        <div class="desc">Phaser.js game with AI-driven NPCs</div>
+      </a>
+      <a class="card" href="health-attendance/index.html">
+        <div class="icon">🏥</div>
+        <div class="name">Health Attendance <span class="badge badge-purple">hackathon</span></div>
+        <div class="desc">Rural health worker attendance coach with live dashboard</div>
+      </a>
+    </div>
+
+    <footer>Powered by WebLLM + Gemma 2 2B · No servers, no API keys</footer>
+  </div>
+</body>
+</html>

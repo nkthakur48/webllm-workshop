@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser AI with Gemma</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { margin-bottom: 1rem; }
+    #status { color: #555; margin-bottom: 1rem; min-height: 1.4em; }
+    #status.ready { color: #0d9488; font-weight: 600; }
+    #chat-log { white-space: pre-wrap; line-height: 1.6; margin-bottom: 1rem; }
+    .user { color: #2563eb; }
+    .assistant { color: #333; }
+    .controls { display: flex; gap: 0.5rem; }
+    input { flex: 1; padding: 0.5rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 0.5rem 1rem; font-size: 1rem; border: none; border-radius: 6px; background: #4285f4; color: white; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <h1>🏁 Checkpoint: Browser AI</h1>
+  <p id="status">Loading Gemma model...</p>
+  <div id="chat-log"></div>
+  <div class="controls" id="controls" style="display:none;">
+    <input type="text" id="input" placeholder="Type a message..." />
+    <button id="send">Send</button>
+  </div>
+
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+
+    const statusEl = document.getElementById("status");
+    const chatLog = document.getElementById("chat-log");
+    const controlsEl = document.getElementById("controls");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+
+    // --- 1. Load the model ---
+    const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+      initProgressCallback: ({ text }) => {
+        statusEl.textContent = text;
+      }
+    });
+    statusEl.textContent = "Model ready!";
+    statusEl.className = "ready";
+    controlsEl.style.display = "flex";
+    inputEl.focus();
+
+    // --- 2. Chat history with a system prompt (persona) ---
+    const chatHistory = [
+      {
+        role: "system",
+        content: "You are a pirate. Keep your responses concise — two to three sentences unless asked for more detail."
+      }
+    ];
+
+    // --- 3. Send a message and stream the response ---
+    async function sendMessage(userText) {
+      chatHistory.push({ role: "user", content: userText });
+
+      const userLine = document.createElement("div");
+      userLine.className = "user";
+      userLine.textContent = "You: " + userText;
+      chatLog.appendChild(userLine);
+
+      const assistantLine = document.createElement("div");
+      assistantLine.className = "assistant";
+      assistantLine.textContent = "Gemma: ";
+      chatLog.appendChild(assistantLine);
+
+      sendBtn.disabled = true;
+      inputEl.disabled = true;
+
+      const chunks = await engine.chat.completions.create({
+        messages: chatHistory,
+        stream: true,
+      });
+
+      let assistantReply = "";
+      for await (const chunk of chunks) {
+        assistantReply += chunk.choices[0]?.delta.content || "";
+        assistantLine.textContent = "Gemma: " + assistantReply;
+      }
+
+      chatHistory.push({ role: "assistant", content: assistantReply });
+      sendBtn.disabled = false;
+      inputEl.disabled = false;
+      inputEl.focus();
+    }
+
+    // --- 4. Wire up the UI ---
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      if (text) { inputEl.value = ""; sendMessage(text); }
+    });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !sendBtn.disabled) sendBtn.click();
+    });
+  </script>
+</body>
+</html>

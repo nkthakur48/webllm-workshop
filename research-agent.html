@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Agent</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .tool-bar {
+      background: #1a73e8;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      padding: 0.4rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .message.tool-call {
+      align-self: center;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 0.82rem;
+      font-style: italic;
+      max-width: 90%;
+      text-align: center;
+      border-radius: 6px;
+    }
+    .message.tool-result {
+      align-self: center;
+      background: #ecfdf5;
+      color: #065f46;
+      font-size: 0.82rem;
+      max-width: 90%;
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+    .message.tool-image {
+      align-self: center;
+      background: transparent;
+      padding: 0;
+      max-width: 60%;
+    }
+    .message.tool-image img {
+      max-width: 100%;
+      display: block;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    }
+    .sources {
+      padding: 0.4rem 1rem;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .sources a {
+      display: block;
+      font-size: 0.8rem;
+      color: #1a73e8;
+      text-decoration: none;
+      padding: 0.15rem 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sources a:hover { text-decoration: underline; }
+    .sources-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: #94a3b8;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.2rem;
+    }
+    /* Markdown inside assistant messages */
+    .message.assistant p { margin: 0.3rem 0; }
+    .message.assistant p:first-child { margin-top: 0; }
+    .message.assistant p:last-child { margin-bottom: 0; }
+    .message.assistant strong { font-weight: 600; }
+    .message.assistant ul, .message.assistant ol { margin: 0.3rem 0; padding-left: 1.4rem; }
+    .message.assistant li { margin: 0.15rem 0; }
+    .message.assistant code {
+      background: rgba(0,0,0,0.06);
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      font-size: 0.88em;
+    }
+    .message.assistant pre {
+      background: #f1f5f9;
+      padding: 0.5rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 0.3rem 0;
+    }
+    .message.assistant pre code { background: none; padding: 0; }
+    .message.assistant a { color: #1a73e8; text-decoration: underline; }
+    .message.assistant h1, .message.assistant h2, .message.assistant h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin: 0.4rem 0 0.2rem;
+    }
+    .message.assistant table { border-collapse: collapse; margin: 0.3rem 0; font-size: 0.88rem; }
+    .message.assistant th, .message.assistant td { border: 1px solid #ddd; padding: 0.25rem 0.5rem; }
+    .message.assistant th { background: #f5f5f5; }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <h2>Loading Research Agent...</h2>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div id="loading-status">Initializing...</div>
+  </div>
+
+  <div id="app">
+    <div class="header">
+      <h1>Research Agent</h1>
+      <button id="clear-btn">New Research</button>
+    </div>
+    <div class="tool-bar">
+      <span>Tools: Wikipedia, Weather, Calculator, DateTime</span>
+      <span id="tool-count">0 tool calls</span>
+    </div>
+    <div class="sources" id="sources" style="display:none;">
+      <div class="sources-label">Sources</div>
+    </div>
+    <div id="chat-messages"></div>
+    <div class="input-bar">
+      <input type="text" id="input" placeholder="Ask me anything — I can search Wikipedia..." />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+    import { marked } from "https://esm.run/marked";
+    import DOMPurify from "https://esm.run/dompurify";
+
+    marked.setOptions({ breaks: true, gfm: true });
+
+    const SYSTEM_PROMPT = `You are a research agent with access to tools. You can use tools to look up information before answering.
+
+AVAILABLE TOOLS:
+1. Wikipedia search: [TOOL wikipedia "search query"]
+2. Calculator: [TOOL calc "math expression"]
+3. Current date/time: [TOOL datetime]
+4. Weather: [TOOL weather "city name"]
+
+RULES:
+- When the user asks a factual question, USE a tool first — do not guess.
+- Output EXACTLY ONE tool call per response when you need information.
+- Put the tool call on its own line at the START of your response, before any other text.
+- After you receive tool results, answer the user's question using those results.
+- You may do multiple rounds of tool calls if you need more information.
+- If the tool returns useful info, cite it naturally in your answer.
+- For simple greetings, opinions, or conversational messages, just respond normally — no tool needed.
+- For math questions, use the calc tool.
+- For weather questions, use the weather tool with a city name.
+- Keep final answers concise — 2-4 sentences with the key facts.
+
+EXAMPLES:
+User: "What is the population of Japan?"
+You: [TOOL wikipedia "Japan population"]
+
+User: "What's the weather in Paris?"
+You: [TOOL weather "Paris"]
+
+(After receiving results, you answer using the data.)`;
+
+    const WELCOME = "I'm a research agent with access to Wikipedia, a calculator, and date/time. Ask me anything factual and I'll look it up — no guessing!";
+
+    const loadingEl = document.getElementById("loading");
+    const appEl = document.getElementById("app");
+    const progressEl = document.getElementById("progress");
+    const loadingStatus = document.getElementById("loading-status");
+    const chatMessages = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const clearBtn = document.getElementById("clear-btn");
+    const toolCountEl = document.getElementById("tool-count");
+    const sourcesEl = document.getElementById("sources");
+
+    const engine = await CreateMLCEngine("gemma-2-2b-it-q4f16_1-MLC", {
+      initProgressCallback: ({ text, progress }) => {
+        loadingStatus.textContent = text;
+        if (progress !== undefined) progressEl.style.width = (progress * 100) + "%";
+      }
+    });
+
+    loadingEl.style.display = "none";
+    appEl.style.display = "flex";
+
+    let chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+    let generating = false;
+    let toolCalls = 0;
+    const MAX_TOOL_ROUNDS = 3; // ponytail: prevent infinite loops if model keeps calling tools
+
+    // --- Tools ---
+
+    async function searchWikipedia(query) {
+      const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json&origin=*`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const results = data.query?.search || [];
+      if (results.length === 0) return { text: "No Wikipedia results found.", url: null };
+
+      const title = results[0].title;
+      const pageUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
+
+      const extractRes = await fetch(
+        `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=extracts|pageimages&exintro=1&explaintext=1&piprop=thumbnail&pithumbsize=400&format=json&origin=*`
+      );
+      const extractData = await extractRes.json();
+      const pages = extractData.query?.pages || {};
+      const page = Object.values(pages)[0];
+      const extract = page?.extract || "No extract available.";
+      const image = page?.thumbnail?.source || null;
+
+      // ponytail: truncate to ~500 chars so we don't blow the context window
+      const truncated = extract.length > 500 ? extract.slice(0, 500) + "..." : extract;
+      return { text: `Wikipedia: ${title}\n${truncated}`, url: pageUrl, title, image };
+    }
+
+    function calculate(expr) {
+      try {
+        // ponytail: only allow math chars to avoid code injection
+        const sanitized = expr.replace(/[^0-9+\-*/().%^ ]/g, "");
+        const result = Function(`"use strict"; return (${sanitized.replace(/\^/g, "**")})`)();
+        return { text: `${expr} = ${result}` };
+      } catch {
+        return { text: `Could not calculate: ${expr}` };
+      }
+    }
+
+    function getDateTime() {
+      return { text: `Current date and time: ${new Date().toLocaleString()}` };
+    }
+
+    const WMO_CODES = {
+      0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+      45: "Foggy", 48: "Rime fog", 51: "Light drizzle", 53: "Drizzle",
+      55: "Heavy drizzle", 61: "Light rain", 63: "Rain", 65: "Heavy rain",
+      71: "Light snow", 73: "Snow", 75: "Heavy snow", 77: "Snow grains",
+      80: "Light showers", 81: "Showers", 82: "Heavy showers",
+      85: "Light snow showers", 86: "Heavy snow showers",
+      95: "Thunderstorm", 96: "Thunderstorm with hail", 99: "Severe thunderstorm"
+    };
+
+    async function getWeather(city) {
+      try {
+        const geoRes = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`
+        );
+        const geoData = await geoRes.json();
+        const loc = geoData.results?.[0];
+        if (!loc) return { text: `Could not find location: ${city}` };
+
+        const wxRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`
+        );
+        const wx = await wxRes.json();
+        const c = wx.current;
+        const condition = WMO_CODES[c.weather_code] || "Unknown";
+
+        return {
+          text: `Weather in ${loc.name}, ${loc.country}:\n` +
+                `Condition: ${condition}\n` +
+                `Temperature: ${c.temperature_2m}°C\n` +
+                `Humidity: ${c.relative_humidity_2m}%\n` +
+                `Wind: ${c.wind_speed_10m} km/h`
+        };
+      } catch (e) {
+        return { text: `Weather lookup failed: ${e.message}` };
+      }
+    }
+
+    async function executeTool(toolName, toolArg) {
+      switch (toolName) {
+        case "wikipedia": return await searchWikipedia(toolArg);
+        case "calc": return calculate(toolArg);
+        case "datetime": return getDateTime();
+        case "weather": return await getWeather(toolArg);
+        default: return { text: `Unknown tool: ${toolName}` };
+      }
+    }
+
+    function parseToolCall(text) {
+      const match = text.match(/\[TOOL\s+(\w+)(?:\s+"([^"]*)")?\]/i);
+      if (!match) return null;
+      return { tool: match[1].toLowerCase(), arg: match[2] || "" };
+    }
+
+    function addSource(url, title) {
+      if (!url) return;
+      sourcesEl.style.display = "block";
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.textContent = title || url;
+      sourcesEl.appendChild(link);
+    }
+
+    // --- Markdown ---
+
+    function renderMarkdown(text) {
+      return DOMPurify.sanitize(marked.parse(text));
+    }
+
+    // --- Chat ---
+
+    function addMessage(type, text) {
+      const div = document.createElement("div");
+      div.className = "message " + type;
+      if (type === "assistant") {
+        div.innerHTML = renderMarkdown(text);
+      } else {
+        div.textContent = text;
+      }
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function addImage(src, alt) {
+      const div = document.createElement("div");
+      div.className = "message tool-image";
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = alt || "";
+      img.loading = "lazy";
+      div.appendChild(img);
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function setInputEnabled(enabled) {
+      sendBtn.disabled = !enabled;
+      inputEl.disabled = !enabled;
+      generating = !enabled;
+    }
+
+    async function getModelResponse() {
+      const chunks = await engine.chat.completions.create({
+        messages: chatHistory,
+        stream: true,
+      });
+
+      const el = addMessage("assistant", "");
+      let reply = "";
+      for await (const chunk of chunks) {
+        reply += chunk.choices[0]?.delta.content || "";
+        el.innerHTML = renderMarkdown(reply);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+      chatHistory.push({ role: "assistant", content: reply });
+      return { reply, el };
+    }
+
+    async function sendMessage(userText) {
+      chatHistory.push({ role: "user", content: userText });
+      addMessage("user", userText);
+      setInputEnabled(false);
+
+      const thinkingEl = addMessage("thinking", "Thinking...");
+
+      // --- Agentic loop: model may call tools multiple times ---
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        if (round > 0) thinkingEl.remove();
+
+        const { reply, el } = await getModelResponse();
+        thinkingEl.remove();
+
+        const toolCall = parseToolCall(reply);
+        if (!toolCall) {
+          // No tool call — this is the final answer. Strip any stray markers.
+          el.innerHTML = renderMarkdown(reply.replace(/\[TOOL\s+[^\]]*\]/gi, "").trim());
+          break;
+        }
+
+        // Show what tool is being called
+        el.textContent = `Using ${toolCall.tool}${toolCall.arg ? `: "${toolCall.arg}"` : ""}...`;
+        el.className = "message tool-call";
+        toolCalls++;
+        toolCountEl.textContent = `${toolCalls} tool call${toolCalls !== 1 ? "s" : ""}`;
+
+        // Execute the tool
+        const result = await executeTool(toolCall.tool, toolCall.arg);
+
+        // Show tool result in chat
+        addMessage("tool-result", result.text);
+        if (result.image) addImage(result.image, result.title);
+
+        if (result.url) addSource(result.url, result.title);
+
+        // Inject result into chat history so model can use it
+        chatHistory.push({
+          role: "user",
+          content: `[TOOL RESULT]\n${result.text}\n[/TOOL RESULT]\n\nNow answer the user's original question using the information above. Do not call another tool unless you need different information.`
+        });
+      }
+
+      setInputEnabled(true);
+      inputEl.focus();
+    }
+
+    addMessage("welcome", WELCOME);
+    inputEl.focus();
+
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      if (text && !generating) { inputEl.value = ""; sendMessage(text); }
+    });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !generating) sendBtn.click();
+    });
+    clearBtn.addEventListener("click", () => {
+      chatHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+      chatMessages.innerHTML = "";
+      toolCalls = 0;
+      toolCountEl.textContent = "0 tool calls";
+      sourcesEl.style.display = "none";
+      sourcesEl.querySelectorAll("a").forEach(a => a.remove());
+      addMessage("welcome", WELCOME);
+      inputEl.focus();
+    });
+  </script>
+</body>
+</html>

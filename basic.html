@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <p id="status">Loading Gemma model...</p>
+    <script type="module">
+      import { CreateMLCEngine } from 'https://esm.run/@mlc-ai/web-llm'
+
+      const statusEl = document.getElementById('status')
+      const engine = await CreateMLCEngine('gemma-2-2b-it-q4f16_1-MLC', {
+        initProgressCallback: ({ text, progress }) => {
+          statusEl.textContent = text
+        },
+      })
+      statusEl.textContent = 'Model ready!'
+      await new Promise(requestAnimationFrame) // let the browser paint before the blocking inference call
+
+      const response = await engine.chat.completions.create({
+        messages: [{ role: 'user', content: 'What is WebGPU?' }],
+      })
+
+      console.log(response.choices[0].message.content)
+    </script>
+  </body>
+</html>
