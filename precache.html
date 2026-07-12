@@ -20,7 +20,7 @@
 <body>
   <div class="card">
     <h1>Workshop Pre-Download</h1>
-    <p>This page downloads and caches the Gemma AI model (~1.5 GB) so you're ready for Day 1. Leave it open until it finishes.</p>
+    <p>This page downloads and caches the Gemma AI model (~1.5 GB) so you're ready for Workshop Day. Leave it open until it finishes.</p>
     <p style="font-size:0.85rem; color:#888;"><strong>Important:</strong> Open this page via Live Server or <code>npx serve</code> — not by double-clicking the file. The model cache is tied to the URL origin (<code>localhost</code>), so it must match how you'll run the workshop code.</p>
     <div id="status">Starting download...</div>
     <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
@@ -46,7 +46,7 @@
       statusEl.textContent = "Model cached! You're all set for the workshop.";
       progressEl.style.width = "100%";
       progressEl.style.background = "#0d9488";
-      resultEl.textContent = "You can close this tab. The model will load instantly on Day 1.";
+      resultEl.textContent = "You can close this tab. The model will load instantly on Workshop Day.";
     } catch (e) {
       statusEl.className = "error";
       statusEl.textContent = "Download failed: " + e.message;
