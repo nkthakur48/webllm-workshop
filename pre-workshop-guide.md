@@ -41,7 +41,7 @@ You should see a file called `precache.html` in the sidebar.
 
 ---
 
-## Step 4: Pre-download the AI model (~1.5 GB)
+## 📌 Step 4: Pre-download the AI model (~1.5 GB) — most important step
 
 This downloads the Gemma AI model into your browser's cache so the workshop starts fast. **Do this on good wifi — it's a one-time 1.5 GB download.**
 
@@ -52,6 +52,22 @@ This downloads the Gemma AI model into your browser's cache so the workshop star
 3. Chrome will open automatically — you'll see a progress bar
 4. **Leave the tab open until it says "Model cached!"** (2–10 minutes depending on your wifi)
 5. Once done, you'll see: **"You can close this tab. The model will load instantly at the workshop."**
+
+Right after you open it, you'll see:
+
+![Model download starting](assets/model-download-starting.png)
+
+While it's downloading, you'll see a progress bar like this:
+
+![Model downloading, in progress](assets/model-download-in-progress.png)
+
+If you've already run this before, it'll load from cache instead of re-downloading:
+
+![Model loading from cache](assets/model-load-from-cache.png)
+
+When it's finished, the page will look like this:
+
+![Model cached, ready for the workshop](assets/model-download-complete.png)
 
 ### Troubleshooting
 
@@ -71,7 +87,7 @@ This downloads the Gemma AI model into your browser's cache so the workshop star
 
 ## What to expect
 
-In this single 2-hour session, you'll build a working AI chat from scratch — load the model, send messages, get streaming responses, give your AI a personality — then wrap it in a polished chat UI, customize your AI agent, and submit it for the hackathon.
+In this 90-minute session, you'll build a working AI chat from scratch — load the model, send messages, get streaming responses, give your AI a personality — then wrap it in a polished chat UI, customize your AI agent, and submit it for the hackathon.
 
 No prior AI or machine learning experience needed. Just bring your laptop and curiosity.
 
