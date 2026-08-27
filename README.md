@@ -1,7 +1,7 @@
 
 # Build Your Own Browser AI Agent
 
-> 2 hours &nbsp;·&nbsp; Zero cost &nbsp;·&nbsp; 100% in your browser
+> 1 hour 30 mins &nbsp;·&nbsp; Zero cost &nbsp;·&nbsp; 100% in your browser
 
 No cloud servers, no API keys, no cloud bills. In one sitting you go from a blank HTML file to a working AI chat agent with a persona, memory, a polished UI, and tool-calling — all running locally on your machine.
 
